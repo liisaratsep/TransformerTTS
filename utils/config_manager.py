@@ -123,7 +123,8 @@ class Config:
                            phoneme_language=self.config['phoneme_language'],
                            with_stress=self.config['with_stress'],
                            debug=self.config['debug'],
-                           model_breathing=self.config['model_breathing'])
+                           model_breathing=self.config['model_breathing'],
+                           alphabet=self.config['alphabet'])
         
         else:
             return ForwardTransformer(encoder_model_dimension=self.config['encoder_model_dimension'],
@@ -150,7 +151,8 @@ class Config:
                                       phoneme_language=self.config['phoneme_language'],
                                       with_stress=self.config['with_stress'],
                                       debug=self.config['debug'],
-                                      model_breathing=self.config['model_breathing'])
+                                      model_breathing=self.config['model_breathing'],
+                                      alphabet=self.config['alphabet'])
     
     def compile_model(self, model):
         if self.model_kind == 'aligner':
