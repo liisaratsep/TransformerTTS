@@ -136,7 +136,7 @@ if not args.skip_phonemes:
     # run cleaner on raw text
     text_proc = TextToTokens.default(cm.config['phoneme_language'], add_start_end=False,
                                      with_stress=cm.config['with_stress'], model_breathing=cm.config['model_breathing'],
-                                     njobs=1)
+                                     njobs=1, alphabet=cm.config['alphabet'])
     
     
     def process_phonemes(file_id):
