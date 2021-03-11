@@ -103,12 +103,17 @@ if not args.skip_phonemes:
     phonemized_metadata_path = cm.phonemized_metadata_path
     train_metadata_path = cm.train_metadata_path
     test_metadata_path = cm.valid_metadata_path
+
+    alphabet = cm.config['alphabet']
+    if not alphabet:
+        alphabet = _alphabet
+
     print(f'\nReading metadata from {metadatareader.metadata_path}')
     print(f'\nFound {len(metadatareader.filenames)} lines.')
     filter_metadata = []
     for fname in cross_file_ids:
         item = metadatareader.text_dict[fname]
-        non_p = [c for c in item if c in _alphabet]
+        non_p = [c for c in item if c in alphabet]
         if len(non_p) < 1:
             filter_metadata.append(fname)
     if len(filter_metadata) > 0:
