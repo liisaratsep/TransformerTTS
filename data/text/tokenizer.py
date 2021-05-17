@@ -48,7 +48,11 @@ class Tokenizer:
 
 
 class Phonemizer:
-    def __init__(self, language: str, with_stress: bool, njobs=4):
+    def __init__(self, language: str, with_stress: bool, njobs=4, alphabet=None):
+        if not alphabet:
+            self.alphabet = all_phonemes
+        else:
+            self.alphabet = sorted(list(set(alphabet)))  # for testing
         self.language = language
         self.njobs = njobs
         self.with_stress = with_stress
@@ -63,15 +67,20 @@ class Phonemizer:
         with_stress = with_stress or self.with_stress
         # phonemizer does not like hyphens.
         text = self._preprocess(text)
-        phonemes = phonemize(text,
-                             language=language,
-                             backend='espeak',
-                             strip=True,
-                             preserve_punctuation=True,
-                             with_stress=with_stress,
-                             punctuation_marks=self.punctuation,
-                             njobs=njobs,
-                             language_switch='remove-flags')
+
+        if not language:
+            phonemes = text
+        else:
+            phonemes = phonemize(text,
+                                 language=language,
+                                 backend='espeak',
+                                 strip=True,
+                                 preserve_punctuation=True,
+                                 with_stress=with_stress,
+                                 punctuation_marks=self.punctuation,
+                                 njobs=njobs,
+                                 language_switch='remove-flags')
+
         return self._postprocess(phonemes)
     
     def _preprocess_string(self, text: str):
@@ -92,7 +101,7 @@ class Phonemizer:
     
     def _postprocess_string(self, text: str) -> str:
         text = text.replace(self.special_hyphen, '-')
-        text = ''.join([c for c in text if c in all_phonemes])
+        text = ''.join([c for c in text if c in self.alphabet])
         text = self._collapse_whitespace(text)
         text = text.strip()
         return text

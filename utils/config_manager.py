@@ -104,9 +104,9 @@ class Config:
         if not ignore_hash:
             self._check_hash()
         if self.model_kind == 'aligner':
-            return Aligner.from_config(self.config, max_r=self.max_r)
+            return Aligner.from_config(self.config, max_r=self.max_r, alphabet=self.config['alphabet'])
         else:
-            return ForwardTransformer.from_config(self.config)
+            return ForwardTransformer.from_config(self.config, alphabet=self.config['alphabet'])
     
     def compile_model(self, model, beta_1=0.9, beta_2=0.98):
         optimizer = tf.keras.optimizers.Adam(self.learning_rate,
