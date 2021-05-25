@@ -304,7 +304,8 @@ class Aligner(tf.keras.models.Model):
                    phoneme_language=config['phoneme_language'],
                    with_stress=config['with_stress'],
                    debug=config['debug'],
-                   model_breathing=config['model_breathing'])
+                   model_breathing=config['model_breathing'],
+                   alphabet=config['alphabet'])
 
 
 class ForwardTransformer(tf.keras.models.Model):
@@ -577,4 +578,5 @@ class ForwardTransformer(tf.keras.models.Model):
             phoneme_language=config['phoneme_language'],
             with_stress=config['with_stress'],
             debug=config['debug'],
-            model_breathing=config['model_breathing'])
+            model_breathing=config['model_breathing'],
+            alphabet=config['alphabet'])

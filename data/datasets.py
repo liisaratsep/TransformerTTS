@@ -10,10 +10,9 @@ from data.text.tokenizer import Tokenizer
 from data.metadata_readers import get_preprocessor_by_name
 
 
-def get_files(path: Union[Path, str], extension='.wav') -> List[Path]:
+def get_files(path: Path, filenames, extension='.wav') -> List[Path]:
     """ Get all files from all subdirs with given extension. """
-    path = Path(path).expanduser().resolve()
-    return list(path.rglob(f'*{extension}'))
+    return list(Path(path, f+extension) for f in filenames)
 
 
 class DataReader:
@@ -41,7 +40,7 @@ class DataReader:
             if training:
                 self.filenames += self.upsample
         if scan_wavs:
-            all_wavs = get_files(self.wav_directory, extension='.wav')
+            all_wavs = get_files(self.wav_directory, self.filenames, extension='.wav')
             self.wav_paths = {w.with_suffix('').name: w for w in all_wavs}
     
     @classmethod

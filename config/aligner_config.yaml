@@ -20,8 +20,10 @@ learning_rate_schedule:
   - [0, 1.0e-4]
 reduction_factor_schedule:
   - [0, 10]
-  - [80_000, 1]
-max_steps: 160_000
+  - [80000, 5]
+  - [150000, 3]
+  - [250000, 1]
+max_steps: 350_000
 force_encoder_diagonal_steps: 1_000
 force_decoder_diagonal_steps: 7_000
 extract_attention_weighted: False # weighted average between last layer decoder attention heads when extracting durations

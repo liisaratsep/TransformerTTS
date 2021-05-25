@@ -33,13 +33,12 @@ print(f"Reading wavs from {metadatareader.wav_directory}")
 print(f"Reading metadata from {metadatareader.metadata_path}")
 print(f'\nFound {len(metadatareader.filenames)} metadata lines.')
 print(f'\nFound {len(file_ids_from_wavs)} wav files.')
-cross_file_ids = [fid for fid in file_ids_from_wavs if fid in metadatareader.filenames]
-print(f'\nThere are {len(cross_file_ids)} wav file names that correspond to metadata lines.')
+cross_file_ids = file_ids_from_wavs
 
 if not args.skip_mels:
     
     def process_wav(wav_path: Path):
-        file_name = wav_path.stem
+        file_name = str(wav_path)[len(str(cm.wav_directory)):].replace('/', '_').split('.')[0].strip('_')
         y, sr = audio.load_wav(str(wav_path))
         pitch = audio.extract_pitch(y)
         mel = audio.mel_spectrogram(y)
@@ -111,8 +110,9 @@ if not args.skip_phonemes:
     print(f'\nReading metadata from {metadatareader.metadata_path}')
     print(f'\nFound {len(metadatareader.filenames)} lines.')
     filter_metadata = []
-    for fname in cross_file_ids:
-        item = metadatareader.text_dict[fname]
+    fnames = metadatareader.text_dict.keys()
+    for fname in fnames:
+        item = metadatareader.text_dict[fname][0]
         non_p = [c for c in item if c in alphabet]
         if len(non_p) < 1:
             filter_metadata.append(fname)
@@ -122,7 +122,7 @@ if not args.skip_phonemes:
             print(f'{fname}: {metadatareader.text_dict[fname]}')
     print(f'\nRemoving {len(remove_files)} line(s) due to mel filtering.')
     remove_files += filter_metadata
-    metadata_file_ids = [fname for fname in cross_file_ids if fname not in remove_files]
+    metadata_file_ids = [fname for fname in fnames if fname not in remove_files]
     metadata_len = len(metadata_file_ids)
     sample_items = np.random.choice(metadata_file_ids, 5)
     test_len = cm.config['n_test']
@@ -145,7 +145,7 @@ if not args.skip_phonemes:
     
     
     def process_phonemes(file_id):
-        text = metadatareader.text_dict[file_id]
+        text = metadatareader.text_dict[file_id][0]
         try:
             phon = text_proc.phonemizer(text)
         except Exception as e:
@@ -158,10 +158,11 @@ if not args.skip_phonemes:
     phonemized_data = {}
     phon_iter = p_uimap(process_phonemes, metadata_file_ids)
     for (file_id, phonemes) in phon_iter:
-        phonemized_data.update({file_id: phonemes})
+        phonemized_data.update({file_id.replace('/', '_'): phonemes})
     
     print('\nPhonemized metadata samples:')
     for i in sample_items:
+        i=i.replace('/', '_')
         print(f'{i}:{phonemized_data[i]}')
         summary_manager.add_text(f'{i}/phonemes', text=phonemized_data[i])
     
