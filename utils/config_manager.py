@@ -20,7 +20,6 @@ class Config:
         self.model_kind = model_kind
         self.yaml = ruamel.yaml.YAML()
         self.config = self._load_config()
-        self.git_hash = self._get_git_hash()
         self.data_name = self.config['data_name']  # raw data
         aligner_config_name = Path(self.config['aligner_config']).stem
         tts_config_name = Path(self.config['tts_config']).stem
@@ -65,21 +64,6 @@ class Config:
         return all_config
     
     @staticmethod
-    def _get_git_hash():
-        try:
-            return subprocess.check_output(['git', 'describe', '--always']).strip().decode()
-        except Exception as e:
-            print(f'WARNING: could not retrieve git hash. {e}')
-    
-    def _check_hash(self):
-        try:
-            git_hash = subprocess.check_output(['git', 'describe', '--always']).strip().decode()
-            if self.config['git_hash'] != git_hash:
-                print(f"WARNING: git hash mismatch. Current: {git_hash}. Config hash: {self.config['git_hash']}")
-        except Exception as e:
-            print(f'WARNING: could not check git hash. {e}')
-    
-    @staticmethod
     def _print_dict_values(values, key_name, level=0, tab_size=2):
         tab = level * tab_size * ' '
         print(tab + '-', key_name, ':', values)
@@ -97,12 +81,9 @@ class Config:
         self._print_dictionary(self.config)
     
     def update_config(self):
-        self.config['git_hash'] = self.git_hash
         self.config['automatic'] = True
     
-    def get_model(self, ignore_hash=False):
-        if not ignore_hash:
-            self._check_hash()
+    def get_model(self):
         if self.model_kind == 'aligner':
             return Aligner.from_config(self.config, max_r=self.max_r)
         else:
