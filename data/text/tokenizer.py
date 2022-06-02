@@ -7,7 +7,7 @@ from data.text.symbols import all_phonemes, _punctuations
 
 
 class Tokenizer:
-    
+
     def __init__(self, start_token='>', end_token='<', pad_token='/', add_start_end=True, alphabet=None,
                  model_breathing=True):
         if not alphabet:
@@ -33,7 +33,7 @@ class Tokenizer:
             self.breathing_token = '@'
             self.idx_to_token[self.breathing_token_index] = self.breathing_token
             self.token_to_idx[self.breathing_token] = [self.breathing_token_index]
-    
+
     def __call__(self, sentence: str) -> list:
         sequence = [self.token_to_idx[c] for c in sentence]  # No filtering: text should only contain known chars.
         sequence = [item for items in sequence for item in items]
@@ -42,7 +42,7 @@ class Tokenizer:
         if self.add_start_end:
             sequence = [self.start_token_index] + sequence + [self.end_token_index]
         return sequence
-    
+
     def decode(self, sequence: list) -> str:
         return ''.join([self.idx_to_token[int(t)] for t in sequence])
 
@@ -60,7 +60,7 @@ class Phonemizer:
         self.punctuation = ';:,.!?¡¿—…"«»“”'
         self._whitespace_re = re.compile(r'\s+')
         self._whitespace_punctuation_re = re.compile(f'\s*([{_punctuations}])\s*')
-    
+
     def __call__(self, text: Union[str, list], with_stress=None, njobs=None, language=None) -> Union[str, list]:
         language = language or self.language
         njobs = njobs or self.njobs
@@ -82,11 +82,11 @@ class Phonemizer:
                                  language_switch='remove-flags')
 
         return self._postprocess(phonemes)
-    
+
     def _preprocess_string(self, text: str):
         text = text.replace('-', self.special_hyphen)
         return text
-    
+
     def _preprocess(self, text: Union[str, list]) -> Union[str, list]:
         if isinstance(text, list):
             return [self._preprocess_string(t) for t in text]
@@ -94,18 +94,18 @@ class Phonemizer:
             return self._preprocess_string(text)
         else:
             raise TypeError(f'{self} input must be list or str, not {type(text)}')
-    
+
     def _collapse_whitespace(self, text: str) -> str:
         text = re.sub(self._whitespace_re, ' ', text)
         return re.sub(self._whitespace_punctuation_re, r'\1', text)
-    
+
     def _postprocess_string(self, text: str) -> str:
         text = text.replace(self.special_hyphen, '-')
         text = ''.join([c for c in text if c in self.alphabet])
         text = self._collapse_whitespace(text)
         text = text.strip()
         return text
-    
+
     def _postprocess(self, text: Union[str, list]) -> Union[str, list]:
         if isinstance(text, list):
             return [self._postprocess_string(t) for t in text]

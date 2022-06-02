@@ -156,18 +156,18 @@ for _ in t:
                               target_durations=durations,
                               target_pitch=pitch)
     losses.append(float(output['loss']))
-    
+
     predicted_durations = dict(zip(fname.numpy(), output['duration'].numpy()))
     all_durations.update(predicted_durations)
     if len(all_durations) >= all_files:  # all the dataset has been processed
         display_predicted_symbol_duration_distributions(all_durations)
         all_durations = {}
-    
+
     t.display(f'step loss: {losses[-1]}', pos=1)
     for pos, n_steps in enumerate(config_dict['n_steps_avg_losses']):
         if len(losses) > n_steps:
             t.display(f'{n_steps}-steps average loss: {sum(losses[-n_steps:]) / n_steps}', pos=pos + 2)
-    
+
     summary_manager.display_loss(output, tag='Train')
     summary_manager.display_scalar(scalar_value=t.avg_time, tag='Meta/iter_time')
     summary_manager.display_scalar(scalar_value=tf.shape(fname)[0], tag='Meta/batch_size')
@@ -178,7 +178,7 @@ for _ in t:
         summary_manager.display_mel(mel=mel[0], tag=f'Train/target_mel')
         summary_manager.display_plot1D(tag=f'Train/Predicted pitch', y=output['pitch'][0])
         summary_manager.display_plot1D(tag=f'Train/Target pitch', y=pitch[0])
-    
+
     if model.step % 1000 == 0:
         save_path = manager_training.save()
     if (model.step % config_dict['weights_save_frequency'] == 0) & (
@@ -186,7 +186,7 @@ for _ in t:
         model.save_model(config.weights_dir / f'step_{model.step}')
         t.display(f'checkpoint at step {model.step}: {config.weights_dir / f"step_{model.step}"}',
                   pos=len(config_dict['n_steps_avg_losses']) + 2)
-    
+
     if model.step % config_dict['validation_frequency'] == 0:
         t.display(f'Validating', pos=len(config_dict['n_steps_avg_losses']) + 3)
         val_loss, time_taken = validate(model=model,
@@ -194,7 +194,7 @@ for _ in t:
                                         summary_manager=summary_manager)
         t.display(f'validation loss at step {model.step}: {val_loss} (took {time_taken}s)',
                   pos=len(config_dict['n_steps_avg_losses']) + 3)
-    
+
     if model.step % config_dict['prediction_frequency'] == 0 and (model.step >= config_dict['prediction_start_step']):
         for i, text in enumerate(texts):
             wavs = []

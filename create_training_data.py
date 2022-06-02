@@ -36,7 +36,7 @@ print(f'\nFound {len(file_ids_from_wavs)} wav files.')
 cross_file_ids = file_ids_from_wavs
 
 if not args.skip_mels:
-    
+
     def process_wav(wav_path: Path):
         file_name = str(wav_path)[len(str(cm.wav_directory)):].replace('/', '_').split('.')[0].strip('_')
         y, sr = audio.load_wav(str(wav_path))
@@ -49,8 +49,8 @@ if not args.skip_mels:
         np.save(mel_path, mel)
         np.save(pitch_path, pitch)
         return {'fname': file_name, 'mel.len': mel.shape[0], 'pitch.path': pitch_path, 'pitch': pitch}
-    
-    
+
+
     print(f"\nMels will be stored stored under")
     print(f"{cm.mel_dir}")
     audio = Audio.from_config(config=cm.config)
@@ -67,15 +67,15 @@ if not args.skip_mels:
             remove_files.append(out_dict['fname'])
         else:
             mel_lens.append(out_dict['mel.len'])
-    
-    
+
+
     def normalize_pitch_vectors(pitch_vecs):
         nonzeros = np.concatenate([v[np.where(v != 0.0)[0]]
                                    for v in pitch_vecs.values()])
         mean, std = np.mean(nonzeros), np.std(nonzeros)
         return mean, std
-    
-    
+
+
     def process_pitches(item: tuple):
         fname, pitch = item
         zero_idxs = np.where(pitch == 0.0)[0]
@@ -83,12 +83,12 @@ if not args.skip_mels:
         pitch /= std
         pitch[zero_idxs] = 0.0
         np.save(fname, pitch)
-    
-    
+
+
     mean, std = normalize_pitch_vectors(pitches)
     pickle.dump({'pitch_mean': mean, 'pitch_std': std}, open(cm.data_dir / 'pitch_stats.pkl', 'wb'))
     pitch_iter = p_umap(process_pitches, pitches.items())
-    
+
     pickle.dump(len_dict, open(cm.data_dir / 'mel_len.pkl', 'wb'))
     pickle.dump(remove_files, open(cm.data_dir / 'under-over_sized_mels.pkl', 'wb'))
     summary_manager.add_histogram('Mel Lengths', values=np.array(mel_lens))
@@ -132,18 +132,18 @@ if not args.skip_phonemes:
     print(f' - all: {phonemized_metadata_path}')
     print(f' - {train_len} training lines: {train_metadata_path}')
     print(f' - {test_len} validation lines: {test_metadata_path}')
-    
+
     print('\nMetadata samples:')
     for i in sample_items:
         print(f'{i}:{metadatareader.text_dict[i]}')
         summary_manager.add_text(f'{i}/text', text=metadatareader.text_dict[i])
-    
+
     # run cleaner on raw text
     text_proc = TextToTokens.default(cm.config['phoneme_language'], add_start_end=False,
                                      with_stress=cm.config['with_stress'], model_breathing=cm.config['model_breathing'],
                                      njobs=1, alphabet=cm.config['alphabet'])
-    
-    
+
+
     def process_phonemes(file_id):
         text = metadatareader.text_dict[file_id][0]
         try:
@@ -152,25 +152,25 @@ if not args.skip_phonemes:
             print(f'{e}\nFile id {file_id}')
             raise BrokenPipeError
         return (file_id, phon)
-    
-    
+
+
     print('\nPHONEMIZING')
     phonemized_data = {}
     phon_iter = p_uimap(process_phonemes, metadata_file_ids)
     for (file_id, phonemes) in phon_iter:
         phonemized_data.update({file_id.replace('/', '_'): phonemes})
-    
+
     print('\nPhonemized metadata samples:')
     for i in sample_items:
-        i=i.replace('/', '_')
+        i = i.replace('/', '_')
         print(f'{i}:{phonemized_data[i]}')
         summary_manager.add_text(f'{i}/phonemes', text=phonemized_data[i])
-    
+
     new_metadata = [f'{k}|{v}\n' for k, v in phonemized_data.items()]
     shuffled_metadata = np.random.permutation(new_metadata)
     train_metadata = shuffled_metadata[0:train_len]
     test_metadata = shuffled_metadata[-test_len:]
-    
+
     with open(phonemized_metadata_path, 'w+', encoding='utf-8') as file:
         file.writelines(new_metadata)
     with open(train_metadata_path, 'w+', encoding='utf-8') as file:

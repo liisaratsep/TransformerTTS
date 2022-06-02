@@ -12,7 +12,7 @@ from data.metadata_readers import get_preprocessor_by_name
 
 def get_files(path: Path, filenames, extension='.wav') -> List[Path]:
     """ Get all files from all subdirs with given extension. """
-    return list(Path(path, f+extension) for f in filenames)
+    return list(Path(path, f + extension) for f in filenames)
 
 
 class DataReader:
@@ -25,7 +25,7 @@ class DataReader:
     IMPORTANT: Use only for information available from source dataset, not for
     training data.
     """
-    
+
     def __init__(self, wav_directory: str, metadata_path: str, metadata_reading_function=None, scan_wavs=False,
                  training=False, is_processed=False):
         self.metadata_reading_function = metadata_reading_function
@@ -42,7 +42,7 @@ class DataReader:
         if scan_wavs:
             all_wavs = get_files(self.wav_directory, self.filenames, extension='.wav')
             self.wav_paths = {w.with_suffix('').name: w for w in all_wavs}
-    
+
     @classmethod
     def from_config(cls, config_manager: TrainingConfigManager, kind: str, scan_wavs=False):
         kinds = ['original', 'phonemized', 'train', 'valid']
@@ -62,7 +62,7 @@ class DataReader:
             metadata = config_manager.valid_metadata_path
         elif kind == 'phonemized':
             metadata = config_manager.phonemized_metadata_path
-        
+
         return cls(wav_directory=config_manager.wav_directory,
                    metadata_reading_function=reader,
                    metadata_path=metadata,
@@ -72,7 +72,7 @@ class DataReader:
 
 
 class AlignerPreprocessor:
-    
+
     def __init__(self,
                  mel_channels: int,
                  mel_start_value: float,
@@ -83,17 +83,17 @@ class AlignerPreprocessor:
         self.start_vec = np.ones((1, mel_channels)) * mel_start_value
         self.end_vec = np.ones((1, mel_channels)) * mel_end_value
         self.tokenizer = tokenizer
-    
+
     def __call__(self, mel, text, sample_name):
         encoded_phonemes = self.tokenizer(text)
         norm_mel = np.concatenate([self.start_vec, mel, self.end_vec], axis=0)
         stop_probs = np.ones((norm_mel.shape[0]))
         stop_probs[-1] = 2
         return norm_mel, encoded_phonemes, stop_probs, sample_name
-    
+
     def get_sample_length(self, norm_mel, encoded_phonemes, stop_probs, sample_name):
         return tf.shape(norm_mel)[0]
-    
+
     @classmethod
     def from_config(cls, config: TrainingConfigManager, tokenizer: Tokenizer):
         return cls(mel_channels=config.config['mel_channels'],
@@ -110,16 +110,16 @@ class AlignerDataset:
         self.metadata_reader = data_reader
         self.preprocessor = preprocessor
         self.mel_directory = Path(mel_directory)
-    
+
     def _read_sample(self, sample_name):
         text = self.metadata_reader.text_dict[sample_name]
         mel = np.load((self.mel_directory / sample_name).with_suffix('.npy').as_posix())
         return mel, text
-    
+
     def _process_sample(self, sample_name):
         mel, text = self._read_sample(sample_name)
         return self.preprocessor(mel=mel, text=text, sample_name=sample_name)
-    
+
     def get_dataset(self, bucket_batch_sizes, bucket_boundaries, shuffle=True, drop_remainder=False):
         return Dataset(
             samples=self.metadata_reader.filenames,
@@ -131,7 +131,7 @@ class AlignerDataset:
             len_function=self.preprocessor.get_sample_length,
             bucket_batch_sizes=bucket_batch_sizes,
             bucket_boundaries=bucket_boundaries)
-    
+
     @classmethod
     def from_config(cls,
                     config: TrainingConfigManager,
@@ -154,14 +154,14 @@ class TTSPreprocessor:
         self.output_types = (tf.float32, tf.int32, tf.int32, tf.float32, tf.string)
         self.padded_shapes = ([None, mel_channels], [None], [None], [None], [])
         self.tokenizer = tokenizer
-    
+
     def __call__(self, text, mel, durations, pitch, sample_name):
         encoded_phonemes = self.tokenizer(text)
         return mel, encoded_phonemes, durations, pitch, sample_name
-    
+
     def get_sample_length(self, mel, encoded_phonemes, durations, pitch, sample_name):
         return tf.shape(mel)[0]
-    
+
     @classmethod
     def from_config(cls, config: TrainingConfigManager, tokenizer: Tokenizer):
         return cls(mel_channels=config.config['mel_channels'],
@@ -182,7 +182,7 @@ class TTSDataset:
         self.duration_directory = Path(duration_directory)
         self.pitch_directory = Path(pitch_directory)
         self.pitch_per_char_directory = Path(pitch_per_char_directory)
-    
+
     def _read_sample(self, sample_name: str):
         text = self.metadata_reader.text_dict[sample_name]
         mel = np.load((self.mel_directory / sample_name).with_suffix('.npy').as_posix())
@@ -190,11 +190,11 @@ class TTSDataset:
             (self.duration_directory / sample_name).with_suffix('.npy').as_posix())
         char_wise_pitch = np.load((self.pitch_per_char_directory / sample_name).with_suffix('.npy').as_posix())
         return mel, text, durations, char_wise_pitch
-    
+
     def _process_sample(self, sample_name: str):
         mel, text, durations, pitch = self._read_sample(sample_name)
         return self.preprocessor(mel=mel, text=text, durations=durations, pitch=pitch, sample_name=sample_name)
-    
+
     def get_dataset(self, bucket_batch_sizes, bucket_boundaries, shuffle=True, drop_remainder=False):
         return Dataset(
             samples=self.metadata_reader.filenames,
@@ -206,7 +206,7 @@ class TTSDataset:
             drop_remainder=drop_remainder,
             bucket_batch_sizes=bucket_batch_sizes,
             bucket_boundaries=bucket_boundaries)
-    
+
     @classmethod
     def from_config(cls,
                     config: TrainingConfigManager,
@@ -236,7 +236,7 @@ class TTSDataset:
 
 class Dataset:
     """ Model digestible dataset. """
-    
+
     def __init__(self,
                  samples: list,
                  preprocessor,
@@ -266,13 +266,13 @@ class Dataset:
             ))
         self.dataset = binned_data
         self.data_iter = iter(binned_data.repeat(-1))
-    
+
     def next_batch(self):
         return next(self.data_iter)
-    
+
     def all_batches(self):
         return iter(self.dataset)
-    
+
     def _datagen(self, shuffle):
         """
         Shuffle once before generating to avoid buffering

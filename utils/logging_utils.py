@@ -17,7 +17,7 @@ def control_frequency(f):
             return result
         else:
             return None
-    
+
     return apply_func
 
 
@@ -29,7 +29,7 @@ class SummaryManager:
         :arg config: configuration dictionary
         :arg max_plot_frequency: every how many steps to plot
     """
-    
+
     def __init__(self,
                  model: tf.keras.models.Model,
                  log_dir: str,
@@ -44,7 +44,7 @@ class SummaryManager:
         self.default_writer = default_writer
         self.writers = {}
         self.add_writer(tag=default_writer, path=self.log_dir, default=True)
-    
+
     def add_writer(self, path, tag=None, default=False):
         """ Adds a writer to self.writers if the writer does not exist already.
             To avoid spamming writers on disk.
@@ -58,39 +58,39 @@ class SummaryManager:
         if default:
             self.default_writer = tag
         return self.writers[tag]
-    
+
     @property
     def global_step(self):
         if self.model is not None:
             return self.model.step
         else:
             return 0
-    
+
     def add_scalars(self, tag, dictionary, step=None):
         if step is None:
             step = self.global_step
         for k in dictionary.keys():
             with self.add_writer(str(self.log_dir / k)).as_default():
                 tf.summary.scalar(name=tag, data=dictionary[k], step=step)
-    
+
     def add_scalar(self, tag, scalar_value, step=None):
         if step is None:
             step = self.global_step
         with self.writers[self.default_writer].as_default():
             tf.summary.scalar(name=tag, data=scalar_value, step=step)
-    
+
     def add_image(self, tag, image, step=None):
         if step is None:
             step = self.global_step
         with self.writers[self.default_writer].as_default():
             tf.summary.image(name=tag, data=image, step=step, max_outputs=4)
-    
+
     def add_histogram(self, tag, values, buckets=None, step=None):
         if step is None:
             step = self.global_step
         with self.writers[self.default_writer].as_default():
             tf.summary.histogram(name=tag, data=values, step=step, buckets=buckets)
-    
+
     def add_audio(self, tag, wav, sr, step=None, description=None):
         if step is None:
             step = self.global_step
@@ -100,7 +100,7 @@ class SummaryManager:
                              sample_rate=sr,
                              step=step,
                              description=description)
-    
+
     def add_text(self, tag, text, step=None):
         if step is None:
             step = self.global_step
@@ -108,9 +108,9 @@ class SummaryManager:
             tf.summary.text(name=tag,
                             data=text,
                             step=step)
-    
+
     @ignore_exception
-    def display_attention_heads(self, outputs: dict, tag='', step: int=None, fname: list=None):
+    def display_attention_heads(self, outputs: dict, tag='', step: int = None, fname: list = None):
         if step is None:
             step = self.global_step
         for layer in ['encoder_attention', 'decoder_attention']:
@@ -131,23 +131,25 @@ class SummaryManager:
                         else:
                             batch_plot_path = f'{tag}_{layer}/{k}/{file.numpy().decode("utf-8")}'
                         self.add_image(str(batch_plot_path), tf.expand_dims(tf.expand_dims(image, 0), -1), step=step)
-                        
+
     @ignore_exception
     def display_last_attention(self, outputs, tag='', step=None, fname=None):
         if step is None:
             step = self.global_step
 
         if fname is None:
-            image = tight_grid(norm_tensor(outputs['decoder_attention']['Decoder_LastBlock_CrossAttention'][0]))  # dim 0 of image_batch is now number of heads
+            image = tight_grid(norm_tensor(outputs['decoder_attention']['Decoder_LastBlock_CrossAttention'][
+                                               0]))  # dim 0 of image_batch is now number of heads
             batch_plot_path = f'{tag}_Decoder_Final_Attention'
             self.add_image(str(batch_plot_path), tf.expand_dims(tf.expand_dims(image, 0), -1), step=step)
         else:
             for j, file in enumerate(fname):
                 image = tight_grid(
-                    norm_tensor(outputs['decoder_attention']['Decoder_LastBlock_CrossAttention'][j]))  # dim 0 of image_batch is now number of heads
+                    norm_tensor(outputs['decoder_attention']['Decoder_LastBlock_CrossAttention'][
+                                    j]))  # dim 0 of image_batch is now number of heads
                 batch_plot_path = f'{tag}_Decoder_Final_Attention/{file.numpy().decode("utf-8")}'
                 self.add_image(str(batch_plot_path), tf.expand_dims(tf.expand_dims(image, 0), -1), step=step)
-    
+
     @ignore_exception
     def display_mel(self, mel, tag='', step=None):
         if step is None:
@@ -157,7 +159,7 @@ class SummaryManager:
         buf = buffer_image(figure)
         img_tf = tf.image.decode_png(buf.getvalue(), channels=3)
         self.add_image(tag, tf.expand_dims(img_tf, 0), step=step)
-    
+
     @ignore_exception
     def display_image(self, image, with_bar=False, figsize=None, tag='', step=None):
         if step is None:
@@ -166,7 +168,7 @@ class SummaryManager:
         image = tf.image.decode_png(buf.getvalue(), channels=4)
         image = tf.expand_dims(image, 0)
         self.add_image(tag=tag, image=image, step=step)
-    
+
     @ignore_exception
     def display_plot1D(self, y, x=None, figsize=None, tag='', step=None):
         if step is None:
@@ -175,7 +177,7 @@ class SummaryManager:
         image = tf.image.decode_png(buf.getvalue(), channels=4)
         image = tf.expand_dims(image, 0)
         self.add_image(tag=tag, image=image, step=step)
-    
+
     @control_frequency
     @ignore_exception
     def display_loss(self, output, tag='', plot_all=False, step=None):
@@ -183,14 +185,14 @@ class SummaryManager:
             step = self.global_step
         self.add_scalars(tag=f'{tag}/losses', dictionary=output['losses'], step=step)
         self.add_scalar(tag=f'{tag}/loss', scalar_value=output['loss'], step=step)
-    
+
     @control_frequency
     @ignore_exception
     def display_scalar(self, tag, scalar_value, plot_all=False, step=None):
         if step is None:
             step = self.global_step
         self.add_scalar(tag=tag, scalar_value=scalar_value, step=step)
-    
+
     @ignore_exception
     def display_audio(self, tag, mel, step=None, description=None):
         wav = tf.transpose(mel)

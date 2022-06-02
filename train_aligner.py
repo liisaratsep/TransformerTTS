@@ -136,7 +136,7 @@ for text_file in config['test_stencences']:
 losses = []
 test_mel, test_phonemes, _, test_fname = valid_dataset.next_batch()
 val_test_sample, val_test_fname, val_test_mel = test_phonemes[0], test_fname[0], test_mel[0]
-val_test_sample = tf.boolean_mask(val_test_sample, val_test_sample!=0)
+val_test_sample = tf.boolean_mask(val_test_sample, val_test_sample != 0)
 
 _ = train_dataset.next_batch()
 t = trange(model.step, config['max_steps'], leave=True)
@@ -152,17 +152,17 @@ for _ in t:
                         reduction_factor=reduction_factor,
                         force_encoder_diagonal=force_encoder_diagonal,
                         force_decoder_diagonal=force_decoder_diagonal)
-    
+
     output = model.train_step(inp=phonemes,
                               tar=mel,
                               stop_prob=stop)
     losses.append(float(output['loss']))
-    
+
     t.display(f'step loss: {losses[-1]}', pos=1)
     for pos, n_steps in enumerate(config['n_steps_avg_losses']):
         if len(losses) > n_steps:
             t.display(f'{n_steps}-steps average loss: {sum(losses[-n_steps:]) / n_steps}', pos=pos + 2)
-    
+
     summary_manager.display_loss(output, tag='Train')
     summary_manager.display_scalar(tag='Meta/learning_rate', scalar_value=model.optimizer.lr)
     summary_manager.display_scalar(tag='Meta/reduction_factor', scalar_value=model.r)
@@ -188,13 +188,13 @@ for _ in t:
                                                scalar_value=tf.reduce_mean(peak_score[i]))
                 summary_manager.display_scalar(tag=f'TrainDecoderAttentionDiagonality/layer{layer}_head{i}',
                                                scalar_value=tf.reduce_mean(diag_measure[i]))
-    
+
     if model.step % 1000 == 0:
         save_path = manager_training.save()
     if model.step % config['weights_save_frequency'] == 0:
         save_path = manager.save()
         t.display(f'checkpoint at step {model.step}: {save_path}', pos=len(config['n_steps_avg_losses']) + 2)
-    
+
     if model.step % config['validation_frequency'] == 0 and (model.step >= config['prediction_start_step']):
         val_loss, time_taken = validate(model=model,
                                         val_dataset=valid_dataset,
@@ -202,7 +202,7 @@ for _ in t:
                                         weighted_durations=config['extract_attention_weighted'])
         t.display(f'validation loss at step {model.step}: {val_loss} (took {time_taken}s)',
                   pos=len(config['n_steps_avg_losses']) + 3)
-        
+
     if model.step % config['prediction_frequency'] == 0 and (model.step >= config['prediction_start_step']):
         for j, text in enumerate(texts):
             for i, text_line in enumerate(text):
@@ -210,13 +210,15 @@ for _ in t:
                 wav = summary_manager.audio.reconstruct_waveform(out['mel'].numpy().T)
                 wav = tf.expand_dims(wav, 0)
                 wav = tf.expand_dims(wav, -1)
-                summary_manager.add_audio(f'Predictions/{text_line}', wav.numpy(), sr=summary_manager.config['sampling_rate'],
+                summary_manager.add_audio(f'Predictions/{text_line}', wav.numpy(),
+                                          sr=summary_manager.config['sampling_rate'],
                                           step=summary_manager.global_step)
-        
-        out = model.predict(val_test_sample, encode=False)#, max_length=tf.shape(val_test_mel)[-2])
+
+        out = model.predict(val_test_sample, encode=False)  # , max_length=tf.shape(val_test_mel)[-2])
         wav = summary_manager.audio.reconstruct_waveform(out['mel'].numpy().T)
         wav = tf.expand_dims(wav, 0)
         wav = tf.expand_dims(wav, -1)
-        summary_manager.add_audio(f'Predictions/val_sample {val_test_fname.numpy().decode("utf-8")}', wav.numpy(), sr=summary_manager.config['sampling_rate'],
+        summary_manager.add_audio(f'Predictions/val_sample {val_test_fname.numpy().decode("utf-8")}', wav.numpy(),
+                                  sr=summary_manager.config['sampling_rate'],
                                   step=summary_manager.global_step)
 print('Done.')

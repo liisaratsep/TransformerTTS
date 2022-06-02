@@ -1,8 +1,8 @@
 # ARCHITECTURE
 decoder_model_dimension: 128
 encoder_model_dimension: 128
-decoder_num_heads: [1]
-encoder_num_heads: [1]
+decoder_num_heads: [ 1 ]
+encoder_num_heads: [ 1 ]
 encoder_feed_forward_dimension: 128
 decoder_feed_forward_dimension: 128
 decoder_prenet_dimension: 128
@@ -26,9 +26,9 @@ fixed_decoder_prenet_dropout: 0.6
 epochs: 10
 batch_size: 2
 learning_rate_schedule:
-  - [0, 1.0e-3]
+  - [ 0, 1.0e-3 ]
 reduction_factor_schedule:
-  - [0, 10]
+  - [ 0, 10 ]
 mask_prob: 0.3
 use_block_attention: False
 debug: True

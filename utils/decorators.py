@@ -11,7 +11,7 @@ def ignore_exception(f):
             print(f'Catched exception in {f}:')
             traceback.print_exc()
             return None
-    
+
     return apply_func
 
 
@@ -22,5 +22,5 @@ def time_it(f):
         t_end = time()
         dur = round(t_end - t_start, ndigits=2)
         return result, dur
-    
+
     return apply_func

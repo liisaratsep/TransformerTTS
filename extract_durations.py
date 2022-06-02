@@ -37,12 +37,12 @@ if __name__ == '__main__':
     config_manager = TrainingConfigManager(config_path=args.config, aligner=True)
     config = config_manager.config
     config_manager.print_config()
-    
+
     if not args.skip_durations:
         model = config_manager.load_model(args.autoregressive_weights)
         if model.r != 1:
             print(f"ERROR: model's reduction factor is greater than 1, check config. (r={model.r}")
-        
+
         data_prep = AlignerPreprocessor.from_config(config=config_manager,
                                                     tokenizer=model.text_pipeline.tokenizer)
         data_handler = AlignerDataset.from_config(config_manager,
@@ -54,10 +54,10 @@ if __name__ == '__main__':
                                            bucket_boundaries=config['bucket_boundaries'],
                                            shuffle=False,
                                            drop_remainder=False)
-        
+
         last_layer_key = 'Decoder_LastBlock_CrossAttention'
         print(f'Extracting attention from layer {last_layer_key}')
-        
+
         summary_manager = SummaryManager(model=model, log_dir=config_manager.log_dir / 'Duration Extraction',
                                          config=config,
                                          default_writer='Duration Extraction')
@@ -72,9 +72,9 @@ if __name__ == '__main__':
                                      stop_prob=stop_batch)
             attention_values = outputs['decoder_attention'][last_layer_key].numpy()
             text = text_batch.numpy()
-            
+
             mel = mel_batch.numpy()
-            
+
             durations, final_align, jumpiness, peakiness, diag_measure = get_durations_from_alignment(
                 batch_alignments=attention_values,
                 mels=mel,
@@ -90,20 +90,20 @@ if __name__ == '__main__':
                                                scalar_value=tf.reduce_mean(batch_avg_peakiness[i]), step=c)
                 summary_manager.display_scalar(tag=f'DurationAttentionDiagonality/head{i}',
                                                scalar_value=tf.reduce_mean(batch_avg_diag_measure[i]), step=c)
-            
+
             for i, name in enumerate(file_name_batch):
                 all_durations = np.append(all_durations, durations[i])  # for plotting only
                 summary_manager.add_image(tag='ExtractedAlignments',
                                           image=tf.expand_dims(tf.expand_dims(final_align[i], 0), -1),
                                           step=step)
-                
+
                 step += 1
                 np.save(str(target_dir / f"{name.numpy().decode('utf-8')}.npy"), durations[i])
-        
+
         all_durations[all_durations >= 20] = 20  # for plotting only
         buckets = len(set(all_durations))  # for plotting only
         summary_manager.add_histogram(values=all_durations, tag='ExtractedDurations', buckets=buckets)
-    
+
     if not args.skip_char_pitch:
         def _pitch_per_char(pitch, durations, mel_len):
             durs_cum = np.cumsum(np.pad(durations, (1, 0)))
@@ -113,16 +113,16 @@ if __name__ == '__main__':
                 values = values[np.where((values * pitch_stats['pitch_std'] + pitch_stats['pitch_mean']) < 400)[0]]
                 pitch_char[idx] = np.mean(values) if len(values) > 0 else 0.0
             return pitch_char
-        
-        
+
+
         def process_per_char_pitch(sample_name: str):
             pitch = np.load((config_manager.pitch_dir / sample_name).with_suffix('.npy').as_posix())
             durations = np.load((config_manager.duration_dir / sample_name).with_suffix('.npy').as_posix())
             mel = np.load((config_manager.mel_dir / sample_name).with_suffix('.npy').as_posix())
             char_wise_pitch = _pitch_per_char(pitch, durations, mel.shape[0])
             np.save((config_manager.pitch_per_char / sample_name).with_suffix('.npy').as_posix(), char_wise_pitch)
-        
-        
+
+
         metadatareader = DataReader.from_config(config_manager, kind='phonemized', scan_wavs=False)
         pitch_stats = pickle.load(open(config_manager.data_dir / 'pitch_stats.pkl', 'rb'))
         print(f'\nComputing phoneme-wise pitch')

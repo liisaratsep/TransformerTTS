@@ -18,7 +18,7 @@ if __name__ == '__main__':
     parser.add_argument('--verbose', '-v', dest='verbose', action='store_true')
     parser.add_argument('--single', '-s', dest='single', action='store_true')
     args = parser.parse_args()
-    
+
     if args.file is not None:
         with open(args.file, 'r') as file:
             text = file.readlines()
@@ -57,7 +57,7 @@ if __name__ == '__main__':
         wav = audio.reconstruct_waveform(mel)
         wavs.append(wav)
         if args.store_mel:
-            np.save((outdir / (file_name + f'_{i}')).with_suffix('.mel'), out['mel'].numpy())
+            np.save(str((outdir / (file_name + f'_{i}')).with_suffix('.mel')), out['mel'].numpy())
         if args.single:
             audio.save_wav(wav, (outdir / (file_name + f'_{i}')).with_suffix('.wav'))
     audio.save_wav(np.concatenate(wavs), output_path)

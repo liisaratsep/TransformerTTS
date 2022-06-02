@@ -8,19 +8,19 @@ def attention_score(att, mel_len, phon_len, r):
     attn_weights : [N, n_heads, mel_dim, phoneme_dim]
     """
     assert len(tf.shape(att)) == 4
-    
+
     mask = tf.range(tf.shape(att)[2])[None, :] < mel_len[:, None]
     mask = tf.cast(mask, tf.int32)[:, None, :]  # [N, 1, mel_dim]
-    
+
     # distance between max (jumpiness)
     loc_score = attention_jumps_score(att=att, mel_mask=mask, mel_len=mel_len, r=r)
-    
+
     # variance
     peak_score = attention_peak_score(att, mask)
-    
+
     # diagonality
     diag_score = diagonality_score(att, mel_len, phon_len)
-    
+
     return loc_score, peak_score, 3. / diag_score
 
 
@@ -38,12 +38,14 @@ def attention_peak_score(att, mel_mask):
     peak_score = tf.reduce_mean(max_loc * tf.cast(mel_mask, tf.float32), axis=-1)
     return tf.cast(peak_score, tf.float32)
 
+
 def diagonality_score(att, mel_len, phon_len, diag_mask=None):
     if diag_mask is None:
         diag_mask = batch_diagonal_mask(att, mel_len, phon_len)
     diag_score = tf.reduce_sum(att * diag_mask, axis=(-2, -1))
     return diag_score
-    
+
+
 def batch_diagonal_mask(att, mel_len, phon_len):
     batch_size = tf.shape(att)[0]
     mel_size = tf.shape(att)[2]

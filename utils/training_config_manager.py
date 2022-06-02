@@ -45,36 +45,37 @@ class TrainingConfigManager:
         if model_kind == 'aligner':
             self.max_r = np.array(self.config['reduction_factor_schedule'])[0, 1].astype(np.int32)
             self.stop_scaling = self.config.get('stop_loss_scaling', 1.)
-    
+
     def _load_config(self):
         all_config = {}
         with open(str(self.config_path), 'rb') as session_yaml:
             session_config = self.yaml.load(session_yaml)
-        for key in ['paths', 'naming', 'training_data_settings','audio_settings',
+        for key in ['paths', 'naming', 'training_data_settings', 'audio_settings',
                     'text_settings', f'{self.model_kind}_settings']:
             all_config.update(session_config[key])
         return all_config
-    
+
     @staticmethod
     def _get_git_hash():
         try:
             return subprocess.check_output(['git', 'describe', '--always']).strip().decode()
         except Exception as e:
             print(f'WARNING: could not retrieve git hash. {e}')
-    
+
     def _check_hash(self):
         try:
             git_hash = subprocess.check_output(['git', 'describe', '--always']).strip().decode()
             if self.config['git_hash'] != git_hash:
-                print(f"WARNING: git hash mismatch. Current: {git_hash}. Training config hash: {self.config['git_hash']}")
+                print(
+                    f"WARNING: git hash mismatch. Current: {git_hash}. Training config hash: {self.config['git_hash']}")
         except Exception as e:
             print(f'WARNING: could not check git hash. {e}')
-    
+
     @staticmethod
     def _print_dict_values(values, key_name, level=0, tab_size=2):
         tab = level * tab_size * ' '
         print(tab + '-', key_name, ':', values)
-    
+
     def _print_dictionary(self, dictionary, recursion_level=0):
         for key in dictionary.keys():
             if isinstance(key, dict):
@@ -82,15 +83,15 @@ class TrainingConfigManager:
                 self._print_dictionary(dictionary[key], recursion_level)
             else:
                 self._print_dict_values(dictionary[key], key_name=key, level=recursion_level)
-    
+
     def print_config(self):
         print('\nCONFIGURATION', self.session_names[self.model_kind])
         self._print_dictionary(self.config)
-    
+
     def update_config(self):
         self.config['git_hash'] = self.git_hash
         self.config['automatic'] = True
-    
+
     def get_model(self, ignore_hash=False):
         if not ignore_hash:
             self._check_hash()
@@ -98,7 +99,7 @@ class TrainingConfigManager:
             return Aligner.from_config(self.config, max_r=self.max_r)
         else:
             return ForwardTransformer.from_config(self.config)
-    
+
     def compile_model(self, model, beta_1=0.9, beta_2=0.98):
         optimizer = tf.keras.optimizers.Adam(self.learning_rate,
                                              beta_1=beta_1,
@@ -108,12 +109,12 @@ class TrainingConfigManager:
             model._compile(stop_scaling=self.stop_scaling, optimizer=optimizer)
         else:
             model._compile(optimizer=optimizer)
-    
+
     def dump_config(self):
         self.update_config()
         with open(self.base_dir / f"config.yaml", 'w') as model_yaml:
             self.yaml.dump(self.config, model_yaml)
-    
+
     def create_remove_dirs(self, clear_dir=False, clear_logs=False, clear_weights=False):
         self.base_dir.mkdir(exist_ok=True, parents=True)
         self.data_dir.mkdir(exist_ok=True)
@@ -136,7 +137,7 @@ class TrainingConfigManager:
                 shutil.rmtree(self.weights_dir, ignore_errors=True)
         self.log_dir.mkdir(exist_ok=True)
         self.weights_dir.mkdir(exist_ok=True)
-    
+
     def load_model(self, checkpoint_path: str = None, verbose=True):
         model = self.get_model()
         self.compile_model(model)
