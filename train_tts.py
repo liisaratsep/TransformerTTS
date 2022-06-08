@@ -2,22 +2,30 @@ import tensorflow as tf
 import numpy as np
 from tqdm import trange
 
-from utils.training_config_manager import TrainingConfigManager
+from utils.training_config_manager import TrainingConfigManager, tts_argparser, TTSMode
 from data.datasets import TTSDataset, TTSPreprocessor
 from utils.decorators import ignore_exception, time_it
 from utils.scheduling import piecewise_linear_schedule
 from utils.logging_utils import SummaryManager
 from model.transformer_utils import create_mel_padding_mask
-from utils.scripts_utils import dynamic_memory_allocation, basic_train_parser
+from utils.scripts_utils import dynamic_memory_allocation
 from data.metadata_readers import post_processed_reader
 
-np.random.seed(42)
-tf.random.set_seed(42)
+MODE = TTSMode("tts")
 dynamic_memory_allocation()
+
+parser = tts_argparser(MODE)
+args = parser.parse_args()
+
+config = TrainingConfigManager(args, MODE)
+
+if config.seed is not None:
+    np.random.seed(config.seed)
+    tf.random.set_seed(config.seed)
 
 
 def display_target_symbol_duration_distributions():
-    phon_data, ups = post_processed_reader(config.phonemized_metadata_path)
+    phon_data, ups = post_processed_reader(config.phonemized_metadata_path, multispeaker=config.config['multispeaker'])
     dur_dict = {}
     for key in phon_data.keys():
         dur_dict[key] = np.load((config.duration_dir / key).with_suffix('.npy'))
@@ -31,7 +39,7 @@ def display_target_symbol_duration_distributions():
 
 
 def display_predicted_symbol_duration_distributions(all_durations):
-    phon_data, ups = post_processed_reader(config.phonemized_metadata_path)
+    phon_data, ups = post_processed_reader(config.phonemized_metadata_path, multispeaker=config.config['multispeaker'])
     symbol_durs = {}
     for key in all_durations.keys():
         clean_key = key.decode('utf-8')
@@ -48,11 +56,12 @@ def validate(model,
              summary_manager):
     val_loss = {'loss': 0.}
     norm = 0.
-    for mel, phonemes, durations, pitch, fname in val_dataset.all_batches():
+    for mel, phonemes, durations, pitch, fname, speaker_id in val_dataset.all_batches():
         model_out = model.val_step(input_sequence=phonemes,
                                    target_sequence=mel,
                                    target_durations=durations,
-                                   target_pitch=pitch)
+                                   target_pitch=pitch,
+                                   speaker_id=speaker_id)
         norm += 1
         val_loss['loss'] += model_out['loss']
     val_loss['loss'] /= norm
@@ -70,7 +79,7 @@ def validate(model,
                                   mel=model_out['mel'][0])
     summary_manager.display_audio(tag=f'Validation {fname[0].numpy().decode("utf-8")}/target', mel=mel[0])
     # predict withoyt enforcing durations and pitch
-    model_out = model.predict(phonemes, encode=False)
+    model_out = model.predict(phonemes, encode=False, speaker_id=speaker_id)
     pred_lengths = tf.cast(tf.reduce_sum(1 - model_out['expanded_mask'], axis=-1), tf.int32)
     pred_lengths = tf.squeeze(pred_lengths)
     tar_lengths = tf.cast(tf.reduce_sum(1 - create_mel_padding_mask(mel), axis=-1), tf.int32)
@@ -86,10 +95,6 @@ def validate(model,
     return val_loss['loss']
 
 
-parser = basic_train_parser()
-args = parser.parse_args()
-
-config = TrainingConfigManager(config_path=args.config)
 config_dict = config.config
 config.create_remove_dirs(clear_dir=args.clear_dir,
                           clear_logs=args.clear_logs,
@@ -138,23 +143,24 @@ display_target_symbol_duration_distributions()
 print('\nTRAINING')
 losses = []
 texts = []
-for text_file in config_dict['text_prediction']:
+
+for text_file in config_dict['test_file_path']:
     with open(text_file, 'r') as file:
-        text = file.readlines()
-    texts.append(text)
+        texts.append(file.readlines())
 
 all_files = len(set(train_data_handler.metadata_reader.filenames))  # without duplicates
 all_durations = {}
 t = trange(model.step, config_dict['max_steps'], leave=True)
 for _ in t:
     t.set_description(f'step {model.step}')
-    mel, phonemes, durations, pitch, fname = train_dataset.next_batch()
+    mel, phonemes, durations, pitch, fname, speaker_id = train_dataset.next_batch()
     learning_rate = piecewise_linear_schedule(model.step, config_dict['learning_rate_schedule'])
     model.set_constants(learning_rate=learning_rate)
     output = model.train_step(input_sequence=phonemes,
                               target_sequence=mel,
                               target_durations=durations,
-                              target_pitch=pitch)
+                              target_pitch=pitch,
+                              speaker_id=speaker_id)
     losses.append(float(output['loss']))
 
     predicted_durations = dict(zip(fname.numpy(), output['duration'].numpy()))
@@ -199,7 +205,12 @@ for _ in t:
         for i, text in enumerate(texts):
             wavs = []
             for i, text_line in enumerate(text):
-                out = model.predict(text_line, encode=True)
+                text_line = text_line.split('|')
+                if len(text_line) > 1:
+                    speaker_id = text_line[1]
+                else:
+                    speaker_id = 0
+                out = model.predict(text_line[0], encode=True, speaker_id=speaker_id)
                 wav = summary_manager.audio.reconstruct_waveform(out['mel'].numpy().T)
                 wavs.append(wav)
             wavs = np.concatenate(wavs)

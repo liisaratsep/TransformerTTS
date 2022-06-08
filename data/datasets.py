@@ -1,6 +1,6 @@
 from pathlib import Path
 from random import Random
-from typing import List, Union
+from typing import List, Union, Optional
 
 import numpy as np
 import tensorflow as tf
@@ -18,7 +18,7 @@ def get_files(path: Path, filenames, extension='.wav') -> List[Path]:
 class DataReader:
     """
     Reads dataset folder and constructs three useful objects:
-        text_dict: {filename: text}
+        text_dict: {filename: (text, speaker_id)}
         wav_paths: {filename: path/to/filename.wav}
         filenames: [filename1, filename2, ...]
         
@@ -26,16 +26,16 @@ class DataReader:
     training data.
     """
 
-    def __init__(self, wav_directory: str, metadata_path: str, metadata_reading_function=None, scan_wavs=False,
-                 training=False, is_processed=False):
+    def __init__(self, wav_directory: str, metadata_path: str, multispeaker: bool, metadata_reading_function=None,
+                 scan_wavs=False, training=False, is_processed=False):
         self.metadata_reading_function = metadata_reading_function
         self.wav_directory = Path(wav_directory)
         self.metadata_path = Path(metadata_path)
         if not is_processed:
-            self.text_dict = self.metadata_reading_function(self.metadata_path)
+            self.text_dict = self.metadata_reading_function(self.metadata_path, multispeaker)
             self.filenames = list(self.text_dict.keys())
         else:
-            self.text_dict, self.upsample = self.metadata_reading_function(self.metadata_path)
+            self.text_dict, self.upsample = self.metadata_reading_function(self.metadata_path, multispeaker)
             self.filenames = list(self.text_dict.keys())
             if training:
                 self.filenames += self.upsample
@@ -56,7 +56,7 @@ class DataReader:
             training = True
         elif kind == 'original':
             metadata = config_manager.metadata_path
-            reader = get_preprocessor_by_name(config_manager.config['data_name'])
+            reader = get_preprocessor_by_name(config_manager.config['metadata_reader'])
             is_processed = False
         elif kind == 'valid':
             metadata = config_manager.valid_metadata_path
@@ -68,7 +68,8 @@ class DataReader:
                    metadata_path=metadata,
                    scan_wavs=scan_wavs,
                    training=training,
-                   is_processed=is_processed)
+                   is_processed=is_processed,
+                   multispeaker=config_manager.config['multispeaker'])
 
 
 class AlignerPreprocessor:
@@ -84,8 +85,8 @@ class AlignerPreprocessor:
         self.end_vec = np.ones((1, mel_channels)) * mel_end_value
         self.tokenizer = tokenizer
 
-    def __call__(self, mel, text, sample_name):
-        encoded_phonemes = self.tokenizer(text)
+    def __call__(self, mel, text, sample_name, speaker_id):
+        encoded_phonemes = self.tokenizer(text, speaker_id=speaker_id)
         norm_mel = np.concatenate([self.start_vec, mel, self.end_vec], axis=0)
         stop_probs = np.ones((norm_mel.shape[0]))
         stop_probs[-1] = 2
@@ -106,19 +107,21 @@ class AlignerDataset:
     def __init__(self,
                  data_reader: DataReader,
                  preprocessor,
-                 mel_directory: str):
+                 mel_directory: str,
+                 seed=None):
         self.metadata_reader = data_reader
         self.preprocessor = preprocessor
         self.mel_directory = Path(mel_directory)
+        self.seed = seed
 
     def _read_sample(self, sample_name):
-        text = self.metadata_reader.text_dict[sample_name]
+        text, speaker_id = self.metadata_reader.text_dict[sample_name]
         mel = np.load((self.mel_directory / sample_name).with_suffix('.npy').as_posix())
-        return mel, text
+        return mel, text, speaker_id
 
     def _process_sample(self, sample_name):
-        mel, text = self._read_sample(sample_name)
-        return self.preprocessor(mel=mel, text=text, sample_name=sample_name)
+        mel, text, speaker_id = self._read_sample(sample_name)
+        return self.preprocessor(mel=mel, text=text, sample_name=sample_name, speaker_id=speaker_id)
 
     def get_dataset(self, bucket_batch_sizes, bucket_boundaries, shuffle=True, drop_remainder=False):
         return Dataset(
@@ -130,7 +133,8 @@ class AlignerDataset:
             drop_remainder=drop_remainder,
             len_function=self.preprocessor.get_sample_length,
             bucket_batch_sizes=bucket_batch_sizes,
-            bucket_boundaries=bucket_boundaries)
+            bucket_boundaries=bucket_boundaries,
+            seed=self.seed)
 
     @classmethod
     def from_config(cls,
@@ -146,20 +150,22 @@ class AlignerDataset:
         metadata_reader = DataReader.from_config(config, kind=kind)
         return cls(preprocessor=preprocessor,
                    data_reader=metadata_reader,
-                   mel_directory=mel_directory)
+                   mel_directory=mel_directory,
+                   seed=config.seed)
 
 
 class TTSPreprocessor:
     def __init__(self, mel_channels, tokenizer: Tokenizer):
-        self.output_types = (tf.float32, tf.int32, tf.int32, tf.float32, tf.string)
-        self.padded_shapes = ([None, mel_channels], [None], [None], [None], [])
+        self.output_types = (tf.float32, tf.int32, tf.int32, tf.float32, tf.string, tf.int32)
+        self.padded_shapes = ([None, mel_channels], [None], [None], [None], [], [])
         self.tokenizer = tokenizer
 
-    def __call__(self, text, mel, durations, pitch, sample_name):
-        encoded_phonemes = self.tokenizer(text)
-        return mel, encoded_phonemes, durations, pitch, sample_name
+    def __call__(self, text, mel, durations, pitch, sample_name, speaker_id):
+        encoded_phonemes = self.tokenizer(text, speaker_id=speaker_id)
+        return mel, encoded_phonemes, durations, pitch, sample_name, speaker_id
 
-    def get_sample_length(self, mel, encoded_phonemes, durations, pitch, sample_name):
+    @staticmethod
+    def get_sample_length(mel, *_):
         return tf.shape(mel)[0]
 
     @classmethod
@@ -175,25 +181,30 @@ class TTSDataset:
                  mel_directory: str,
                  pitch_directory: str,
                  duration_directory: str,
-                 pitch_per_char_directory: str):
+                 pitch_per_char_directory: str,
+                 seed: Optional[int] = None):
         self.metadata_reader = data_reader
         self.preprocessor = preprocessor
         self.mel_directory = Path(mel_directory)
         self.duration_directory = Path(duration_directory)
         self.pitch_directory = Path(pitch_directory)
         self.pitch_per_char_directory = Path(pitch_per_char_directory)
+        self.seed = seed
+        self.zfill = preprocessor.tokenizer.zfill
 
     def _read_sample(self, sample_name: str):
-        text = self.metadata_reader.text_dict[sample_name]
+        text, speaker_id = self.metadata_reader.text_dict[sample_name]
         mel = np.load((self.mel_directory / sample_name).with_suffix('.npy').as_posix())
-        durations = np.load(
-            (self.duration_directory / sample_name).with_suffix('.npy').as_posix())
-        char_wise_pitch = np.load((self.pitch_per_char_directory / sample_name).with_suffix('.npy').as_posix())
-        return mel, text, durations, char_wise_pitch
+        durations = np.pad(np.load(
+            (self.duration_directory / sample_name).with_suffix('.npy').as_posix()), (self.zfill, 0))
+        char_wise_pitch = np.pad(np.load((self.pitch_per_char_directory / sample_name).with_suffix('.npy').as_posix()),
+                                 (self.zfill, 0))
+        return mel, text, durations, char_wise_pitch, speaker_id
 
     def _process_sample(self, sample_name: str):
-        mel, text, durations, pitch = self._read_sample(sample_name)
-        return self.preprocessor(mel=mel, text=text, durations=durations, pitch=pitch, sample_name=sample_name)
+        mel, text, durations, pitch, speaker_id = self._read_sample(sample_name)
+        return self.preprocessor(mel=mel, text=text, durations=durations, pitch=pitch, sample_name=sample_name,
+                                 speaker_id=speaker_id)
 
     def get_dataset(self, bucket_batch_sizes, bucket_boundaries, shuffle=True, drop_remainder=False):
         return Dataset(
@@ -205,7 +216,8 @@ class TTSDataset:
             shuffle=shuffle,
             drop_remainder=drop_remainder,
             bucket_batch_sizes=bucket_batch_sizes,
-            bucket_boundaries=bucket_boundaries)
+            bucket_boundaries=bucket_boundaries,
+            seed=self.seed)
 
     @classmethod
     def from_config(cls,
@@ -231,7 +243,8 @@ class TTSDataset:
                    mel_directory=mel_directory,
                    duration_directory=duration_directory,
                    pitch_directory=pitch_directory,
-                   pitch_per_char_directory=config.pitch_per_char)
+                   pitch_per_char_directory=config.pitch_per_char,
+                   seed=config.seed)
 
 
 class Dataset:
@@ -248,7 +261,7 @@ class Dataset:
                  padding_values: tuple = None,
                  shuffle=True,
                  drop_remainder=True,
-                 seed=42):
+                 seed: Optional[int] = None):
         self._random = Random(seed)
         self._samples = samples[:]
         self.preprocessor = preprocessor

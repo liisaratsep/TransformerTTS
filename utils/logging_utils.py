@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Optional
 
 import tensorflow as tf
 
@@ -31,7 +32,7 @@ class SummaryManager:
     """
 
     def __init__(self,
-                 model: tf.keras.models.Model,
+                 model: Optional[tf.keras.models.Model],
                  log_dir: str,
                  config: dict,
                  max_plot_frequency=10,

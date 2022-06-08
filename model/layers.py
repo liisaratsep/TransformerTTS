@@ -1,3 +1,4 @@
+from typing import Optional
 import tensorflow as tf
 
 from model.transformer_utils import positional_encoding
@@ -270,12 +271,13 @@ class SelfAttentionBlocks(tf.keras.layers.Layer):
                  feed_forward_dimension: int,
                  num_heads: list,
                  maximum_position_encoding: int,
-                 conv_filters: list,
+                 conv_filters: Optional[list],
                  dropout_rate: float,
                  dense_blocks: int,
-                 kernel_size: int,
-                 conv_activation: str,
+                 kernel_size: Optional[int],
+                 conv_activation: Optional[str],
                  transposed_convs: bool = None,
+                 use_layernorm: bool = False,
                  **kwargs):
         super(SelfAttentionBlocks, self).__init__(**kwargs)
         self.model_dim = model_dim
@@ -292,11 +294,16 @@ class SelfAttentionBlocks(tf.keras.layers.Layer):
                                    conv_activation=conv_activation, conv_filters=conv_filters,
                                    transposed_convs=transposed_convs)
             for i, n_heads in enumerate(num_heads[dense_blocks:])]
+
+        self.use_layernorm = use_layernorm
         self.layernorm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
 
     def call(self, inputs, training, padding_mask, reduction_factor=1):
         seq_len = tf.shape(inputs)[1]
-        x = self.layernorm(inputs)
+        if self.use_layernorm:
+            x = self.layernorm(inputs)
+        else:
+            x = inputs * tf.math.sqrt(tf.cast(self.model_dim, tf.float32))
         x += self.pos_encoding_scalar * self.pos_encoding[:, :seq_len * reduction_factor:reduction_factor, :]
         x = self.dropout(x, training=training)
         attention_weights = {}

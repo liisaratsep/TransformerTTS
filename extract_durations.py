@@ -1,4 +1,3 @@
-import argparse
 import pickle
 
 import tensorflow as tf
@@ -6,7 +5,7 @@ import numpy as np
 from tqdm import tqdm
 from p_tqdm import p_umap
 
-from utils.training_config_manager import TrainingConfigManager
+from utils.training_config_manager import TrainingConfigManager, tts_argparser, TTSMode
 from utils.logging_utils import SummaryManager
 from data.datasets import AlignerPreprocessor
 from utils.alignments import get_durations_from_alignment
@@ -14,27 +13,24 @@ from utils.scripts_utils import dynamic_memory_allocation
 from data.datasets import AlignerDataset
 from data.datasets import DataReader
 
-np.random.seed(42)
-tf.random.set_seed(42)
+MODE = TTSMode("extract")
 dynamic_memory_allocation()
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--config', dest='config', type=str)
-    parser.add_argument('--best', dest='best', action='store_true',
-                        help='Use best head instead of weighted average of heads.')
-    parser.add_argument('--autoregressive_weights', type=str, default=None,
-                        help='Explicit path to autoregressive model weights.')
-    parser.add_argument('--skip_char_pitch', dest='skip_char_pitch', action='store_true')
-    parser.add_argument('--skip_durations', dest='skip_durations', action='store_true')
+    parser = tts_argparser(MODE)
     args = parser.parse_args()
+    config_manager = TrainingConfigManager(args, MODE)
+    if config_manager.seed is not None:
+        np.random.seed(config_manager.seed)
+        tf.random.set_seed(config_manager.seed)
+
     weighted = not args.best
     tag_description = ''.join([
         f'{"_weighted" * weighted}{"_best" * (not weighted)}',
     ])
     writer_tag = f'DurationExtraction{tag_description}'
     print(writer_tag)
-    config_manager = TrainingConfigManager(config_path=args.config, aligner=True)
+
     config = config_manager.config
     config_manager.print_config()
 
@@ -79,7 +75,8 @@ if __name__ == '__main__':
                 batch_alignments=attention_values,
                 mels=mel,
                 phonemes=text,
-                weighted=weighted)
+                weighted=weighted,
+                zfill=model.text_pipeline.tokenizer.zfill)
             batch_avg_jumpiness = tf.reduce_mean(jumpiness, axis=0)
             batch_avg_peakiness = tf.reduce_mean(peakiness, axis=0)
             batch_avg_diag_measure = tf.reduce_mean(diag_measure, axis=0)
@@ -116,12 +113,15 @@ if __name__ == '__main__':
 
 
         def process_per_char_pitch(sample_name: str):
-            pitch = np.load((config_manager.pitch_dir / sample_name).with_suffix('.npy').as_posix())
-            durations = np.load((config_manager.duration_dir / sample_name).with_suffix('.npy').as_posix())
-            mel = np.load((config_manager.mel_dir / sample_name).with_suffix('.npy').as_posix())
-            char_wise_pitch = _pitch_per_char(pitch, durations, mel.shape[0])
-            np.save((config_manager.pitch_per_char / sample_name).with_suffix('.npy').as_posix(), char_wise_pitch)
-
+            try:
+                pitch = np.load((config_manager.pitch_dir / sample_name).with_suffix('.npy').as_posix())
+                durations = np.load((config_manager.duration_dir / sample_name).with_suffix('.npy').as_posix())
+                mel = np.load((config_manager.mel_dir / sample_name).with_suffix('.npy').as_posix())
+                char_wise_pitch = _pitch_per_char(pitch, durations, mel.shape[0])
+                np.save((config_manager.pitch_per_char / sample_name).with_suffix('.npy').as_posix(), char_wise_pitch)
+            except Exception as e:
+                print(e)
+                print(f"Failed to process {sample_name}")
 
         metadatareader = DataReader.from_config(config_manager, kind='phonemized', scan_wavs=False)
         pitch_stats = pickle.load(open(config_manager.data_dir / 'pitch_stats.pkl', 'rb'))

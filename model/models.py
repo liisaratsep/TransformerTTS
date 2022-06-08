@@ -1,5 +1,7 @@
+from enum import Enum
 from pathlib import Path
 import subprocess
+from typing import Optional, Union
 
 import tensorflow as tf
 import numpy as np
@@ -12,8 +14,12 @@ from model.layers import DecoderPrenet, Postnet, StatPredictor, Expand, SelfAtte
 from utils.metrics import batch_diagonal_mask
 
 
+class Multispeaker(str, Enum):
+    GST = "GST"
+    embedding = "embedding"
+
+
 class Aligner(tf.keras.models.Model):
-    
     def __init__(self,
                  encoder_model_dimension: int,
                  decoder_model_dimension: int,
@@ -36,9 +42,14 @@ class Aligner(tf.keras.models.Model):
                  max_r: int = 10,
                  alphabet: str = None,
                  debug=False,
+                 collapse_whitespace: bool = True,
+                 multispeaker: Optional[str] = None,
+                 n_speakers: int = 1,
                  **kwargs):
         super(Aligner, self).__init__(**kwargs)
         self.config = self._make_config(locals())
+        self.multispeaker = Multispeaker.GST if multispeaker is not None else None  # no embedding option for aligners
+        self.n_speakers = n_speakers
         self.start_vec = tf.ones((1, mel_channels), dtype=tf.float32) * mel_start_value
         self.end_vec = tf.ones((1, mel_channels), dtype=tf.float32) * mel_end_value
         self.stop_prob_index = 2
@@ -51,7 +62,10 @@ class Aligner(tf.keras.models.Model):
                                                   add_start_end=True,
                                                   with_stress=with_stress,
                                                   model_breathing=model_breathing,
-                                                  alphabet=alphabet)
+                                                  alphabet=alphabet,
+                                                  collapse_whitespace=collapse_whitespace,
+                                                  gst=(self.multispeaker == Multispeaker.GST),
+                                                  zfill=len(str(n_speakers)))
         self.encoder_prenet = tf.keras.layers.Embedding(self.text_pipeline.tokenizer.vocab_size,
                                                         encoder_prenet_dimension,
                                                         name='Embedding')
@@ -78,9 +92,10 @@ class Aligner(tf.keras.models.Model):
         self.final_proj_mel = tf.keras.layers.Dense(self.mel_channels * self.max_r, name='FinalProj')
         self.decoder_postnet = Postnet(mel_channels=mel_channels,
                                        name='Postnet')
-        
+
         self.training_input_signature = [
             tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+            tf.TensorSpec(shape=(None,), dtype=tf.int32),
             tf.TensorSpec(shape=(None, None, mel_channels), dtype=tf.float32),
             tf.TensorSpec(shape=(None, None), dtype=tf.int32)
         ]
@@ -98,17 +113,17 @@ class Aligner(tf.keras.models.Model):
         ]
         self.debug = debug
         self._apply_all_signatures()
-    
+
     @property
     def step(self):
         return int(self.optimizer.iterations)
-    
+
     def _apply_signature(self, function, signature):
         if self.debug:
             return function
         else:
             return tf.function(input_signature=signature)(function)
-    
+
     def _apply_all_signatures(self):
         self.forward = self._apply_signature(self._forward, self.forward_input_signature)
         self.train_step = self._apply_signature(self._train_step, self.training_input_signature)
@@ -116,14 +131,15 @@ class Aligner(tf.keras.models.Model):
         self.forward_encoder = self._apply_signature(self._forward_encoder, self.encoder_signature)
         self.forward_decoder = self._apply_signature(self._forward_decoder, self.decoder_signature)
 
-    def _make_config(self, locals) -> dict:
+    @staticmethod
+    def _make_config(locals_) -> dict:
         config = {}
-        for k in locals:
+        for k in locals_:
             if (k != 'self') and (k != '__class__'):
-                if isinstance(locals[k], dict):
-                    config.update(locals[k])
+                if isinstance(locals_[k], dict):
+                    config.update(locals_[k])
                 else:
-                    config.update({k: locals[k]})
+                    config.update({k: locals_[k]})
         return dict(config)
 
     def _call_encoder(self, inputs, training):
@@ -133,7 +149,7 @@ class Aligner(tf.keras.models.Model):
                                                 training=training,
                                                 padding_mask=padding_mask)
         return enc_output, padding_mask, attn_weights
-    
+
     def _call_decoder(self, encoder_output, targets, encoder_padding_mask, training):
         dec_target_padding_mask = create_mel_padding_mask(targets)
         look_ahead_mask = create_look_ahead_mask(tf.shape(targets)[1])
@@ -154,27 +170,27 @@ class Aligner(tf.keras.models.Model):
             {'decoder_attention': attention_weights, 'decoder_output': dec_output, 'linear': mel,
              'mel_mask': dec_target_padding_mask})
         return model_output
-    
+
     def _forward(self, inp, output):
         model_out = self.__call__(inputs=inp,
                                   targets=output,
                                   training=False)
         return model_out
-    
+
     def _forward_encoder(self, inputs):
         return self._call_encoder(inputs, training=False)
-    
+
     def _forward_decoder(self, encoder_output, targets, encoder_padding_mask):
         return self._call_decoder(encoder_output, targets, encoder_padding_mask, training=False)
-    
+
     def _gta_forward(self, inp, tar, stop_prob, training):
         tar_inp = tar[:, :-1]
         tar_real = tar[:, 1:]
         tar_stop_prob = stop_prob[:, 1:]
-        
+
         mel_len = int(tf.shape(tar_inp)[1])
         tar_mel = tar_inp[:, 0::self.r, :]
-        
+
         with tf.GradientTape() as tape:
             model_out = self.__call__(inputs=inp,
                                       targets=tar_mel,
@@ -185,7 +201,7 @@ class Aligner(tf.keras.models.Model):
                                                    model_out['stop_prob'][:, :mel_len, :]),
                                                   self.loss,
                                                   self.loss_weights)
-            
+
             phon_len = tf.reduce_sum(1. - tf.squeeze(model_out['text_mask'], axis=(1, 2)), axis=1)
             d_loss = 0.
             norm_factor = 1.
@@ -197,7 +213,7 @@ class Aligner(tf.keras.models.Model):
                     d_measure = tf.reduce_sum(model_out['decoder_attention'][key] * decoder_dmask, axis=(-2, -1))
                     d_loss += tf.reduce_mean(d_measure) / 10.
                 norm_factor += len(model_out['decoder_attention'].keys())
-            
+
             if self.force_encoder_diagonal:
                 enc_key_list = list(model_out['encoder_attention'].keys())
                 encoder_dmask = batch_diagonal_mask(model_out['encoder_attention'][enc_key_list[0]], phon_len, phon_len)
@@ -210,48 +226,48 @@ class Aligner(tf.keras.models.Model):
         model_out.update({'loss': loss})
         model_out.update({'losses': {'mel': loss_vals[0], 'stop_prob': loss_vals[1], 'diag_loss': d_loss}})
         return model_out, tape
-    
+
     def _train_step(self, inp, tar, stop_prob):
         model_out, tape = self._gta_forward(inp, tar, stop_prob, training=True)
         gradients = tape.gradient(model_out['loss'], self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         return model_out
-    
+
     def _val_step(self, inp, tar, stop_prob):
         model_out, _ = self._gta_forward(inp, tar, stop_prob, training=False)
         return model_out
-    
+
     def _compile(self, stop_scaling, optimizer):
         self.loss_weights = [1., 1.]
         self.compile(loss=[masked_mean_absolute_error,
                            new_scaled_crossentropy(index=2, scaling=stop_scaling)],
                      loss_weights=self.loss_weights,
                      optimizer=optimizer)
-    
+
     def _set_r(self, r):
         if self.r == r:
             return
         self.r = r
         self._apply_all_signatures()
-    
+
     def _set_force_encoder_diagonal(self, value):
         if self.force_encoder_diagonal == value:
             return
         self.force_encoder_diagonal = value
         self._apply_all_signatures()
-    
+
     def _set_force_decoder_diagonal(self, value):
         if self.force_decoder_diagonal == value:
             return
         self.force_decoder_diagonal = value
         self._apply_all_signatures()
-    
-    def align(self, text, mel, mels_have_start_end_vectors=False, phonemize=False, encode_phonemes=False, plot=True):
+
+    def align(self, text, mel, mels_have_start_end_vectors=False, phonemize=False, encode_phonemes=False):
         if phonemize:
             text = self.text_pipeline.phonemizer(text)
         if encode_phonemes:
             text = self.text_pipeline.tokenizer(text)
-        
+
         if len(tf.shape(text)) < 2:
             text = tf.expand_dims(text, axis=0)
         text = tf.cast(text, tf.int32)
@@ -269,10 +285,10 @@ class Aligner(tf.keras.models.Model):
         model_out = self.forward(inp=text, output=autoregr_tar_mel)
         attn_weights = model_out['decoder_attention']['Decoder_LastBlock_CrossAttention']
         return attn_weights, model_out
-    
-    def predict(self, inp, max_length=1000, encode=True, verbose=True):
+
+    def predict(self, inp, speaker_id=0, max_length=1000, encode=True, verbose=True, **kwargs):
         if encode:
-            inp = self.encode_text(inp)
+            inp = self.encode_text(inp, speaker_id)
         inp = tf.cast(tf.expand_dims(inp, 0), tf.int32)
         output = tf.cast(tf.expand_dims(self.start_vec, 0), tf.float32)
         output_concat = tf.cast(tf.expand_dims(self.start_vec, 0), tf.float32)
@@ -298,7 +314,7 @@ class Aligner(tf.keras.models.Model):
         model_out = self._call_decoder(encoder_output, targets, padding_mask, training)
         model_out.update({'encoder_attention': encoder_attention, 'text_mask': padding_mask})
         return model_out
-    
+
     def set_constants(self,
                       learning_rate: float = None,
                       reduction_factor: float = None,
@@ -312,13 +328,13 @@ class Aligner(tf.keras.models.Model):
             self._set_force_encoder_diagonal(force_encoder_diagonal)
         if force_decoder_diagonal is not None:
             self._set_force_decoder_diagonal(force_decoder_diagonal)
-    
-    def encode_text(self, text):
-        return self.text_pipeline(text)
-    
+
+    def encode_text(self, text, speaker_id):
+        return self.text_pipeline(text, speaker_id=speaker_id)
+
     def build_model_weights(self) -> None:
         _ = self(tf.zeros((1, 1)), tf.zeros((1, 1, self.mel_channels)), training=False)
-    
+
     @classmethod
     def from_config(cls, config, max_r=10):
         return cls(mel_channels=config['mel_channels'],
@@ -342,6 +358,9 @@ class Aligner(tf.keras.models.Model):
                    debug=config['debug'],
                    model_breathing=config['model_breathing'],
                    alphabet=config['alphabet'])
+
+    def get_config(self):
+        pass
 
 
 class ForwardTransformer(tf.keras.models.Model):
@@ -372,15 +391,24 @@ class ForwardTransformer(tf.keras.models.Model):
                  encoder_feed_forward_dimension: int = None,
                  decoder_feed_forward_dimension: int = None,
                  alphabet: str = None,
+                 collapse_whitespace: bool = True,
+                 use_layernorm: bool = False,
+                 multispeaker: Optional[str] = None,
+                 n_speakers: int = 1,
                  debug=False,
                  **kwargs):
         super(ForwardTransformer, self).__init__()
         self.config = self._make_config(locals(), kwargs)
+        self.multispeaker = Multispeaker(multispeaker) if multispeaker is not None else None
+        self.n_speakers = n_speakers
         self.text_pipeline = TextToTokens.default(phoneme_language,
                                                   add_start_end=False,
                                                   with_stress=with_stress,
                                                   model_breathing=model_breathing,
-                                                  alphabet=alphabet)
+                                                  alphabet=alphabet,
+                                                  collapse_whitespace=collapse_whitespace,
+                                                  gst=(self.multispeaker == Multispeaker.GST),
+                                                  zfill=len(str(n_speakers)))
         self.symbols = self.text_pipeline.tokenizer.alphabet
         self.mel_channels = mel_channels
         self.encoder_prenet = tf.keras.layers.Embedding(self.text_pipeline.tokenizer.vocab_size,
@@ -396,7 +424,14 @@ class ForwardTransformer(tf.keras.models.Model):
                                            kernel_size=encoder_attention_conv_kernel,
                                            conv_activation='relu',
                                            transposed_convs=transposed_attn_convs,
+                                           use_layernorm=use_layernorm,
                                            name='Encoder')
+        if self.multispeaker == Multispeaker.embedding:
+            self.speaker_embedder = tf.keras.layers.Embedding(self.n_speakers,
+                                                              encoder_model_dimension,
+                                                              name='speaker_embedder')
+        else:
+            self.speaker_embedder = None
         self.dur_pred = StatPredictor(conv_filters=duration_conv_filters,
                                       kernel_size=duration_kernel_size,
                                       conv_padding='same',
@@ -423,55 +458,61 @@ class ForwardTransformer(tf.keras.models.Model):
                                            kernel_size=decoder_attention_conv_kernel,
                                            conv_activation='relu',
                                            transposed_convs=transposed_attn_convs,
+                                           use_layernorm=use_layernorm,
                                            name='Decoder')
         self.out = tf.keras.layers.Dense(mel_channels)
         self.training_input_signature = [
             tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+            tf.TensorSpec(shape=(None,), dtype=tf.int32),
             tf.TensorSpec(shape=(None, None, mel_channels), dtype=tf.float32),
             tf.TensorSpec(shape=(None, None), dtype=tf.int32),
             tf.TensorSpec(shape=(None, None), dtype=tf.float32)
         ]
         self.forward_input_signature = [
             tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+            tf.TensorSpec(shape=(None,), dtype=tf.int32),
             tf.TensorSpec(shape=(), dtype=tf.float32),
         ]
         self.forward_masked_input_signature = [
             tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+            tf.TensorSpec(shape=(None,), dtype=tf.int32),
             tf.TensorSpec(shape=(), dtype=tf.float32),
             tf.TensorSpec(shape=(None, None), dtype=tf.float32),
             tf.TensorSpec(shape=(None, None), dtype=tf.float32),
         ]
         self.debug = debug
         self._apply_all_signatures()
-    
+
     def _apply_signature(self, function, signature):
         if self.debug:
             return function
         else:
             return tf.function(input_signature=signature)(function)
-    
+
     def _apply_all_signatures(self):
         self.forward = self._apply_signature(self._forward, self.forward_input_signature)
         self.train_step = self._apply_signature(self._train_step, self.training_input_signature)
         self.val_step = self._apply_signature(self._val_step, self.training_input_signature)
-    
-    def _make_config(self, locals:dict, kwargs:dict) -> dict:
+
+    @staticmethod
+    def _make_config(locals_: dict, kwargs: dict) -> dict:
         config = {}
-        keys = [k for k in locals.keys() if (k not in kwargs) and (k not in ['self', '__class__', 'kwargs'] )]
+        keys = [k for k in locals_.keys() if (k not in kwargs) and (k not in ['self', '__class__', 'kwargs'])]
         for k in keys:
-            if isinstance(locals[k], dict):
-                config.update(locals[k])
+            if isinstance(locals_[k], dict):
+                config.update(locals_[k])
             else:
-                config.update({k: locals[k]})
+                config.update({k: locals_[k]})
         config.update(kwargs)
         return config
 
-    def _train_step(self, input_sequence, target_sequence, target_durations, target_pitch):
+    def _train_step(self, input_sequence, speaker_id, target_sequence, target_durations, target_pitch):
         target_durations = tf.expand_dims(target_durations, -1)
         target_pitch = tf.expand_dims(target_pitch, -1)
         mel_len = int(tf.shape(target_sequence)[1])
         with tf.GradientTape() as tape:
-            model_out = self.__call__(input_sequence, target_durations, target_pitch=target_pitch, training=True)
+            model_out = self.__call__(input_sequence, target_durations, target_pitch=target_pitch,
+                                      training=True, speaker_id=speaker_id)
             loss, loss_vals = weighted_sum_losses((target_sequence,
                                                    target_durations,
                                                    target_pitch),
@@ -485,7 +526,7 @@ class ForwardTransformer(tf.keras.models.Model):
         gradients = tape.gradient(loss, self.trainable_variables)
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         return model_out
-    
+
     def _compile(self, optimizer):
         self.loss_weights = [1., 1., 3.]
         self.compile(loss=[masked_mean_absolute_error,
@@ -493,12 +534,13 @@ class ForwardTransformer(tf.keras.models.Model):
                            masked_mean_absolute_error],
                      loss_weights=self.loss_weights,
                      optimizer=optimizer)
-    
-    def _val_step(self, input_sequence, target_sequence, target_durations, target_pitch):
+
+    def _val_step(self, input_sequence, speaker_id, target_sequence, target_durations, target_pitch):
         target_durations = tf.expand_dims(target_durations, -1)
         target_pitch = tf.expand_dims(target_pitch, -1)
         mel_len = int(tf.shape(target_sequence)[1])
-        model_out = self.__call__(input_sequence, target_durations, target_pitch=target_pitch, training=False)
+        model_out = self.__call__(input_sequence, target_durations, target_pitch=target_pitch,
+                                  training=False, speaker_id=speaker_id)
         loss, loss_vals = weighted_sum_losses((target_sequence,
                                                target_durations,
                                                target_pitch),
@@ -510,25 +552,44 @@ class ForwardTransformer(tf.keras.models.Model):
         model_out.update({'loss': loss})
         model_out.update({'losses': {'mel': loss_vals[0], 'duration': loss_vals[1], 'pitch': loss_vals[2]}})
         return model_out
-    
-    def _forward(self, input_sequence, durations_scalar):
+
+    def _forward(self, input_sequence, speaker_id, durations_scalar):
         return self.__call__(input_sequence, target_durations=None, target_pitch=None, training=False,
                              durations_scalar=durations_scalar, max_durations_mask=None,
-                             min_durations_mask=None)
-    
+                             min_durations_mask=None, speaker_id=speaker_id)
+
     @property
     def step(self):
         return int(self.optimizer.iterations)
-    
+
     def call(self, x, target_durations=None, target_pitch=None, training=False, durations_scalar=1.,
-             max_durations_mask=None,
-             min_durations_mask=None):
+             max_durations_mask=None, min_durations_mask=None,
+             speaker_id=None, pitch_id=None, dur_id=None):
         encoder_padding_mask = create_encoder_padding_mask(x)
         x = self.encoder_prenet(x)
         x, encoder_attention = self.encoder(x, training=training, padding_mask=encoder_padding_mask)
         padding_mask = 1. - tf.squeeze(encoder_padding_mask, axis=(1, 2))[:, :, None]
-        durations = self.dur_pred(x, training=training, mask=padding_mask)
-        pitch = self.pitch_pred(x, training=training, mask=padding_mask)
+
+        if self.speaker_embedder is not None:
+            speaker_emb = pitch_emb = dur_emb = self.speaker_embedder(speaker_id)
+
+            if pitch_id is not None:
+                pitch_emb = self.speaker_embedder(pitch_id)
+            if dur_id is not None:
+                dur_emb = self.speaker_embedder(dur_id)
+
+            if len(x.shape) == 3:
+                speaker_emb = tf.expand_dims(speaker_emb, axis=1)
+                pitch_emb = tf.expand_dims(pitch_emb, axis=1)
+                dur_emb = tf.expand_dims(dur_emb, axis=1)
+
+            durations = self.dur_pred(x + dur_emb, training=training, mask=padding_mask)
+            pitch = self.pitch_pred(x + pitch_emb, training=training, mask=padding_mask)
+
+        else:
+            durations = self.dur_pred(x, training=training, mask=padding_mask)
+            pitch = self.pitch_pred(x, training=training, mask=padding_mask)
+
         if target_pitch is not None:
             pitch_embed = self.pitch_embed(target_pitch)
         else:
@@ -543,8 +604,12 @@ class ForwardTransformer(tf.keras.models.Model):
         if min_durations_mask is not None:
             use_durations = tf.math.maximum(use_durations, tf.expand_dims(min_durations_mask, -1))
         mels = self.expand(x, use_durations)
+        if self.speaker_embedder is not None:
+            mels = tf.concat((speaker_emb, mels), 1)
         expanded_mask = create_mel_padding_mask(mels)
         mels, decoder_attention = self.decoder(mels, training=training, padding_mask=expanded_mask, reduction_factor=1)
+        if self.speaker_embedder is not None:
+            mels = mels[:, 1:, :]
         mels = self.out(mels)
         model_out = {'mel': mels,
                      'duration': durations,
@@ -553,34 +618,43 @@ class ForwardTransformer(tf.keras.models.Model):
                      'encoder_attention': encoder_attention,
                      'decoder_attention': decoder_attention}
         return model_out
-    
-    def set_constants(self, learning_rate: float = None, **kwargs):
+
+    def set_constants(self, learning_rate: float = None, **_):
         if learning_rate is not None:
             self.optimizer.lr.assign(learning_rate)
-    
-    def encode_text(self, text):
-        return self.text_pipeline(text)
-    
+
+    def encode_text(self, text, speaker_id):
+        return self.text_pipeline(text, speaker_id=speaker_id)
+
     def predict(self, inp, encode=True, speed_regulator=1., phoneme_max_duration=None, phoneme_min_duration=None,
-                max_durations_mask=None, min_durations_mask=None, phoneme_durations=None, phoneme_pitch=None):
+                max_durations_mask=None, min_durations_mask=None, phoneme_durations=None, phoneme_pitch=None,
+                speaker_id=0, dur_id=None, pitch_id=None):
         if encode:
-            inp = self.encode_text(inp)
+            inp = self.encode_text(inp, speaker_id=speaker_id)
         if len(tf.shape(inp)) < 2:
             inp = tf.expand_dims(inp, 0)
         inp = tf.cast(inp, tf.int32)
         duration_scalar = tf.cast(1. / speed_regulator, tf.float32)
         max_durations_mask = self._make_max_duration_mask(inp, phoneme_max_duration)
         min_durations_mask = self._make_min_duration_mask(inp, phoneme_min_duration)
+
+        speaker_id = tf.cast([speaker_id], tf.int32) if type(speaker_id) == int else speaker_id
+        dur_id = tf.cast([dur_id], tf.int32) if type(dur_id) == int else dur_id
+        pitch_id = tf.cast([pitch_id], tf.int32) if type(pitch_id) == int else pitch_id
+
         out = self.call(inp,
                         target_durations=phoneme_durations,
                         target_pitch=phoneme_pitch,
                         training=False,
                         durations_scalar=duration_scalar,
                         max_durations_mask=max_durations_mask,
-                        min_durations_mask=min_durations_mask)
+                        min_durations_mask=min_durations_mask,
+                        speaker_id=speaker_id,
+                        dur_id=dur_id,
+                        pitch_id=pitch_id)
         out['mel'] = tf.squeeze(out['mel'])
         return out
-    
+
     def _make_max_duration_mask(self, encoded_text, phoneme_max_duration):
         np_text = np.array(encoded_text)
         new_mask = np.ones(tf.shape(encoded_text)) * float('inf')
@@ -589,7 +663,7 @@ class ForwardTransformer(tf.keras.models.Model):
                 phon_idx = self.text_pipeline.tokenizer(item[0])[0]
                 new_mask[np_text == phon_idx] = item[1]
         return tf.cast(tf.convert_to_tensor(new_mask), tf.float32)
-    
+
     def _make_min_duration_mask(self, encoded_text, phoneme_min_duration):
         np_text = np.array(encoded_text)
         new_mask = np.zeros(tf.shape(encoded_text))
@@ -598,9 +672,9 @@ class ForwardTransformer(tf.keras.models.Model):
                 phon_idx = self.text_pipeline.tokenizer(item[0])[0]
                 new_mask[np_text == phon_idx] = item[1]
         return tf.cast(tf.convert_to_tensor(new_mask), tf.float32)
-    
+
     def build_model_weights(self) -> None:
-        _ = self(tf.zeros((1, 1)), target_durations=None, target_pitch=None, training=False)
+        _ = self(tf.zeros((1, 1)), target_durations=None, target_pitch=None, training=False, speaker_id=tf.zeros(1, ))
 
     def save_model(self, path: str):
         yaml = YAML()
@@ -641,7 +715,10 @@ class ForwardTransformer(tf.keras.models.Model):
         model.build_model_weights()
         model.load_weights(path / 'model_weights.hdf5')
         return model
-    
+
     @classmethod
     def from_config(cls, config: dict, custom_objects=None):
         return cls(**config)
+
+    def get_config(self):
+        pass

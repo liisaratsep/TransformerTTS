@@ -99,24 +99,20 @@ def duration_to_alignment_matrix(durations):
     return np.array(alignments)
 
 
-def get_durations_from_alignment(batch_alignments, mels, phonemes, weighted=False):
+def get_durations_from_alignment(batch_alignments, mels, phonemes, weighted=False, zfill = 0):
     """
 
     :param batch_alignments: attention weights from autoregressive model.
     :param mels: mel spectrograms.
     :param phonemes: phoneme sequence.
     :param weighted: if True use weighted average of durations of heads, best head if False.
-    :param binary: if True take maximum attention peak, sum if False.
-    :param fill_gaps: if True fills zeros durations with ones.
-    :param fix_jumps: if True, tries to scan alingments for attention jumps and interpolate.
-    :param fill_mode: used only if fill_gaps is True. Is either 'max' or 'next'. Defines where to take the duration
-        needed to fill the gap. Next takes it from the next non-zeros duration value, max from the sequence maximum.
+    :param zfill: number of characters used for GST tokens
     :return:
     """
     # mel_len - 1 because we remove last timestep, which is end_vector. start vector is not predicted (or removed from GTA)
     mel_len = mel_lengths(mels, padding_value=0.) - 1  # [N]
-    # phonemes contain start and end tokens (start will be removed later)
-    phon_len = phoneme_lengths(phonemes) - 1
+    # phonemes contain start and end tokens (start will be removed later) and GST models include GST tokens
+    phon_len = phoneme_lengths(phonemes) - 1 - zfill
     jumpiness, peakiness, diag_measure = attention_score(att=batch_alignments, mel_len=mel_len, phon_len=phon_len, r=1)
     attn_scores = diag_measure + jumpiness + peakiness
     durations = []
@@ -124,7 +120,7 @@ def get_durations_from_alignment(batch_alignments, mels, phonemes, weighted=Fals
     for batch_num, al in enumerate(batch_alignments):
         unpad_mel_len = mel_len[batch_num]
         unpad_phon_len = phon_len[batch_num]
-        unpad_alignments = al[:, 1:unpad_mel_len, 1:unpad_phon_len]  # first dim is heads
+        unpad_alignments = al[:, 1:unpad_mel_len, 1+zfill:unpad_phon_len]  # first dim is heads
         scored_attention = unpad_alignments * attn_scores[batch_num][:, None, None]
 
         if weighted:

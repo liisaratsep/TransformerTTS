@@ -145,7 +145,7 @@ you can use the ljspeech preprocessor in ```data/metadata_readers.py```, otherwi
 
 Make sure that:
 
-- the metadata reader function name is the same as ```data_name``` field in ```training_config.yaml```.
+- the metadata reader function name is the same as ```metadata_reader``` field in ```training_config.yaml```.
 - the metadata file (can be anything) is specified under ```metadata_path``` in ```training_config.yaml```
 
 ## Training

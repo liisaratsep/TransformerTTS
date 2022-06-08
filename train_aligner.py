@@ -2,22 +2,27 @@ import tensorflow as tf
 import numpy as np
 from tqdm import trange
 
-from utils.training_config_manager import TrainingConfigManager
+from utils.training_config_manager import TrainingConfigManager, tts_argparser, TTSMode
 from data.datasets import AlignerDataset, AlignerPreprocessor
 from utils.decorators import ignore_exception, time_it
 from utils.scheduling import piecewise_linear_schedule, reduction_schedule
 from utils.logging_utils import SummaryManager
-from utils.scripts_utils import dynamic_memory_allocation, basic_train_parser
+from utils.scripts_utils import dynamic_memory_allocation
 from utils.metrics import attention_score
 from utils.spectrogram_ops import mel_lengths, phoneme_lengths
 from utils.alignments import get_durations_from_alignment
 
-np.random.seed(42)
-tf.random.set_seed(42)
-
+MODE = TTSMode("aligner")
 dynamic_memory_allocation()
-parser = basic_train_parser()
+
+parser = tts_argparser(MODE)
 args = parser.parse_args()
+
+config_manager = TrainingConfigManager(args, MODE)
+
+if config_manager.seed is not None:
+    np.random.seed(config_manager.seed)
+    tf.random.set_seed(config_manager.seed)
 
 
 def cut_with_durations(durations, mel, phonemes, snippet_len=10):
@@ -77,7 +82,6 @@ def validate(model,
     return val_loss['loss']
 
 
-config_manager = TrainingConfigManager(config_path=args.config, aligner=True)
 config = config_manager.config
 config_manager.create_remove_dirs(clear_dir=args.clear_dir,
                                   clear_logs=args.clear_logs,
@@ -206,7 +210,12 @@ for _ in t:
     if model.step % config['prediction_frequency'] == 0 and (model.step >= config['prediction_start_step']):
         for j, text in enumerate(texts):
             for i, text_line in enumerate(text):
-                out = model.predict(text_line, encode=True)
+                text_line = text_line.split('|')
+                if len(text_line) > 1:
+                    speaker_id = text_line[1]
+                else:
+                    speaker_id = 0
+                out = model.predict(text_line[0], encode=True, speaker_id=speaker_id)
                 wav = summary_manager.audio.reconstruct_waveform(out['mel'].numpy().T)
                 wav = tf.expand_dims(wav, 0)
                 wav = tf.expand_dims(wav, -1)

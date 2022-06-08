@@ -24,13 +24,13 @@ training_data_settings:
 # AUDIO SETTINGS
 audio_settings:
   sampling_rate: 22050
-  n_fft: 1024
+  n_fft: 2048
   mel_channels: 80
-  hop_length: 256
-  win_length: 1024
-  f_min: 0
-  f_max: 8000
-  normalizer: MelGAN                 # which mel normalization to use from utils.audio.py [MelGAN or WaveRNN]
+  hop_length: 275
+  win_length: 1100
+  f_min: 40
+  f_max: null
+  normalizer: WaveRNN                 # which mel normalization to use from utils.audio.py [MelGAN or WaveRNN]
 
   # SILENCE CUTTING
   trim_silence_top_db: 60
@@ -96,7 +96,7 @@ aligner_settings:
   n_steps_avg_losses: [100, 500, 1_000, 5_000]  # command line display of average loss values for the last n steps
   prediction_start_step: 10_000 # step after which to predict durations at validation time
   prediction_frequency: 5_000
-  test_file_path: # TODO
+  test_stencences:
     - aligner_test_sentences.txt
 
 tts_settings:

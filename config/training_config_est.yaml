@@ -8,7 +8,8 @@ paths:
 # DATASET AND SPEAKER SETTINGS
 dataset:
   metadata_reader: ljspeech # raw data naming for default data reader (select function from data/metadata_readers.py)
-  speakers: 1  # how many speaker tokens are reserved in the model
+  multispeaker: GST  # type of multispeaker approach, use null to disable multispeaker support
+  n_speakers: 10  # how many speaker ids are stored in the model
 
 # TRAINING DATA SETTINGS
 training_data_settings:
@@ -49,11 +50,11 @@ audio_settings:
 
 text_settings:
   # TOKENIZER
-  phoneme_language: 'en-us'  # set null to skip phonemization for unsupported languages (not recommended)
-  with_stress: True  # use stress symbols in phonemization
-  model_breathing: false  # add a token for the initial breathing
-  alphabet: null  # set specific symbols if phoneme_language is null
-  collapse_whitespace: True
+  phoneme_language: null  # set null to skip phonemization for unsupported languages (not recommended)
+  with_stress: False  # use stress symbols in phonemization
+  model_breathing: False  # add a token for the initial breathing
+  alphabet: ' abcdefghijklmnopqrstuvwxyzõäöüšž,!?."'  # set specific symbols if phoneme_language is null
+  collapse_whitespace: False
 
 aligner_settings:
   # ARCHITECTURE
@@ -96,8 +97,8 @@ aligner_settings:
   n_steps_avg_losses: [100, 500, 1_000, 5_000]  # command line display of average loss values for the last n steps
   prediction_start_step: 10_000 # step after which to predict durations at validation time
   prediction_frequency: 5_000
-  test_file_path: # TODO
-    - aligner_test_sentences.txt
+  test_stencences:
+    - aligner_test_sentences_est.txt
 
 tts_settings:
   # ARCHITECTURE
@@ -115,8 +116,8 @@ tts_settings:
   decoder_max_position_encoding: 10000
   encoder_dense_blocks: 0
   decoder_dense_blocks: 0
-  transposed_attn_convs: True  # if True, convolutions after MHA are over time.
-  use_layernorm: True  # use False for older models
+  transposed_attn_convs: False  # if True, convolutions after MHA are over time.
+  use_layernorm: False  # use False for older models
 
   # STATS PREDICTORS ARCHITECTURE
   duration_conv_filters: [256, 226]
@@ -143,4 +144,4 @@ tts_settings:
   n_steps_avg_losses: [100, 500, 1_000, 5_000]  # command line display of average loss values for the last n steps
   prediction_start_step: 4_000
   test_file_path:
-    - test_sentences.txt
+    - test_sentences_est.txt

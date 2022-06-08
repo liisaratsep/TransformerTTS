@@ -1,6 +1,5 @@
 channels:
   - conda-forge
-  - anaconda
 dependencies:
   - python==3.8
   - matplotlib==3.2.2
@@ -8,13 +7,12 @@ dependencies:
   - numba==0.48
   - numpy==1.17.4
   - ruamel.yaml==0.16.6
-  - cudnn
-  - tqdm==4.42.1
+  - tensorflow-gpu>=2.2.0
+  - tqdm
   - pysoundfile
   - scipy
   - pip
   - pip:
-      - tensorflow-gpu==2.5.0
       - webrtcvad
       - p_tqdm
       - pyworld

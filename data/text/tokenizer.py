@@ -3,17 +3,26 @@ import re
 
 from phonemizer.phonemize import phonemize
 
-from data.text.symbols import all_phonemes, _punctuations
+from data.text.symbols import all_phonemes, _punctuations, gst_tokens
 
 
 class Tokenizer:
 
     def __init__(self, start_token='>', end_token='<', pad_token='/', add_start_end=True, alphabet=None,
-                 model_breathing=True):
+                 model_breathing=True, gst=False, zfill=0):
         if not alphabet:
             self.alphabet = all_phonemes
         else:
-            self.alphabet = sorted(list(set(alphabet)))  # for testing
+            self.alphabet = alphabet  # for testing
+
+        self.gst = gst
+        self.zfill = 0
+        if self.gst:
+            self.alphabet += gst_tokens
+            self.zfill = zfill
+
+        self.alphabet = sorted(list(set(self.alphabet)))
+
         self.idx_to_token = {i: s for i, s in enumerate(self.alphabet, start=1)}
         self.idx_to_token[0] = pad_token
         self.token_to_idx = {s: [i] for i, s in self.idx_to_token.items()}
@@ -34,7 +43,9 @@ class Tokenizer:
             self.idx_to_token[self.breathing_token_index] = self.breathing_token
             self.token_to_idx[self.breathing_token] = [self.breathing_token_index]
 
-    def __call__(self, sentence: str) -> list:
+    def __call__(self, sentence: str, speaker_id=0) -> list:
+        if self.gst:
+            sentence = str(speaker_id).zfill(self.zfill) + sentence
         sequence = [self.token_to_idx[c] for c in sentence]  # No filtering: text should only contain known chars.
         sequence = [item for items in sequence for item in items]
         if self.model_breathing:
@@ -48,7 +59,7 @@ class Tokenizer:
 
 
 class Phonemizer:
-    def __init__(self, language: str, with_stress: bool, njobs=4, alphabet=None):
+    def __init__(self, language: str, with_stress: bool, njobs=4, alphabet=None, collapse_whitespace: bool = True):
         if not alphabet:
             self.alphabet = all_phonemes
         else:
@@ -59,7 +70,8 @@ class Phonemizer:
         self.special_hyphen = '—'
         self.punctuation = ';:,.!?¡¿—…"«»“”'
         self._whitespace_re = re.compile(r'\s+')
-        self._whitespace_punctuation_re = re.compile(f'\s*([{_punctuations}])\s*')
+        self._whitespace_punctuation_re = re.compile(rf'\s*([{_punctuations}])\s*')
+        self.collapse_whitespace = collapse_whitespace
 
     def __call__(self, text: Union[str, list], with_stress=None, njobs=None, language=None) -> Union[str, list]:
         language = language or self.language
@@ -102,7 +114,8 @@ class Phonemizer:
     def _postprocess_string(self, text: str) -> str:
         text = text.replace(self.special_hyphen, '-')
         text = ''.join([c for c in text if c in self.alphabet])
-        text = self._collapse_whitespace(text)
+        if self.collapse_whitespace:
+            text = self._collapse_whitespace(text)
         text = text.strip()
         return text
 
