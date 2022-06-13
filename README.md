@@ -217,24 +217,17 @@ Newer models are added to the [Releases](https://github.com/TartuNLP/Transformer
 Access the original pre-trained models with the API call.
 
 Old weights
+
 | Model URL | Commit | Vocoder Commit|
 |---|---|---|
-|[ljspeech_tts_model](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/ljspeech_weights_tts.zip)| 0cd7d33 |
-aca5990 |
-|[ljspeech_melgan_forward_model](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_melgan_forward_transformer.zip)
-| 1c1cb03| aca5990 |
-|[ljspeech_melgan_autoregressive_model_v2](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_melgan_autoregressive_transformer.zip)
-| 1c1cb03| aca5990 |
-|[ljspeech_wavernn_forward_model](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_wavernn_forward_transformer.zip)
-| 1c1cb03| 3595219 |
-|[ljspeech_wavernn_autoregressive_model_v2](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_wavernn_autoregressive_transformer.zip)
-| 1c1cb03| 3595219 |
-|[ljspeech_wavernn_forward_model](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_forward_transformer.zip)
-| d9ccee6| 3595219 |
-|[ljspeech_wavernn_autoregressive_model_v2](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_autoregressive_transformer.zip)
-| d9ccee6| 3595219 |
-|[ljspeech_wavernn_autoregressive_model_v1](https://github.com/as-ideas/tts_model_outputs/tree/master/ljspeech_transformertts)
-| 2f3a1b5| 3595219 |
+|[ljspeech_tts_model](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/ljspeech_weights_tts.zip)| 0cd7d33 | aca5990 |
+|[ljspeech_melgan_forward_model](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_melgan_forward_transformer.zip) | 1c1cb03| aca5990 |
+|[ljspeech_melgan_autoregressive_model_v2](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_melgan_autoregressive_transformer.zip) | 1c1cb03| aca5990 |
+|[ljspeech_wavernn_forward_model](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_wavernn_forward_transformer.zip) | 1c1cb03| 3595219 |
+|[ljspeech_wavernn_autoregressive_model_v2](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_wavernn_autoregressive_transformer.zip) | 1c1cb03| 3595219 |
+|[ljspeech_wavernn_forward_model](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_forward_transformer.zip) | d9ccee6| 3595219 |
+|[ljspeech_wavernn_autoregressive_model_v2](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_autoregressive_transformer.zip) | d9ccee6| 3595219 |
+|[ljspeech_wavernn_autoregressive_model_v1](https://github.com/as-ideas/tts_model_outputs/tree/master/ljspeech_transformertts) | 2f3a1b5| 3595219 |
 
 ## Maintainers
 
