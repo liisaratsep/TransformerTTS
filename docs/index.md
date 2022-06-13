@@ -1,3 +1,8 @@
+---
+layout: default
+title: A Text-to-Speech Transformer in TensorFlow 2
+---
+
 <p align="center">
     <br>
     <img src="https://raw.githubusercontent.com/as-ideas/TransformerTTS/master/docs/transformer_logo.png" width="400"/>
