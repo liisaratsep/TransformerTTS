@@ -8,7 +8,8 @@ paths:
 # DATASET AND SPEAKER SETTINGS
 dataset:
   metadata_reader: ljspeech # raw data naming for default data reader (select function from data/metadata_readers.py)
-  speakers: 1  # how many speaker tokens are reserved in the model
+  multispeaker: null  # type of multispeaker approach (GST or embedding), use null to disable multispeaker support
+  n_speakers: 1  # how many speaker tokens are reserved in the model
 
 # TRAINING DATA SETTINGS
 training_data_settings:

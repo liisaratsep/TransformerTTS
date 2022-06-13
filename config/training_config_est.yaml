@@ -8,7 +8,7 @@ paths:
 # DATASET AND SPEAKER SETTINGS
 dataset:
   metadata_reader: ljspeech # raw data naming for default data reader (select function from data/metadata_readers.py)
-  multispeaker: GST  # type of multispeaker approach, use null to disable multispeaker support
+  multispeaker: GST  # type of multispeaker approach (GST or embedding), use null to disable multispeaker support
   n_speakers: 10  # how many speaker ids are stored in the model
 
 # TRAINING DATA SETTINGS
