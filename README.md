@@ -52,7 +52,7 @@ Estonian and multispeaker samples can be found [here](https://tartunlp.github.io
 ## Updates
 
 - 06/22: Multi-speaker synthesis (TartuNLP)
-- 05/22: Merging updated from the original repository (TartuNLP)
+- 05/22: Merged updates from the original repository (TartuNLP)
 - 06/21: Grapheme-based synthesis and Estonian models (TartuNLP)
 - 06/20: Added normalisation and pre-trained models compatible with the
   faster [MelGAN](https://github.com/seungwonpark/melgan) vocoder.
