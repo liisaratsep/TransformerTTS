@@ -5,8 +5,8 @@ title: Estonian TTS samples
 
 # Estonian Multispeaker TTS with TransformerTTS
 
-These samples are created using single-speaker and multispeaker (GST) models on 10 Estonian speakers. The waveforms are
-generated with HiFiGAN.
+These samples are created using single-speaker and multispeaker models on 10 Estonian speakers. The waveforms are
+generated with HiFiGAN. Samples from the original implementation can be found [here](original).
 
 <table>
 <thead>

@@ -145,3 +145,5 @@ _site
 .jekyll-metadata
 vendor
 .bundle
+
+config/
