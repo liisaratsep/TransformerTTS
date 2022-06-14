@@ -1,3 +1,5 @@
+import random
+
 import tensorflow as tf
 import numpy as np
 from tqdm import trange
@@ -209,7 +211,7 @@ for _ in t:
                 if len(text_line) > 1:
                     speaker_id = text_line[1]
                 else:
-                    speaker_id = 0
+                    speaker_id = random.randint(0, model.n_speakers-1)
                 out = model.predict(text_line[0], encode=True, speaker_id=speaker_id)
                 wav = summary_manager.audio.reconstruct_waveform(out['mel'].numpy().T)
                 wavs.append(wav)
