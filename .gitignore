@@ -138,3 +138,7 @@ dmypy.json
 # Pyre type checker
 .pyre/
 vocoding/
+
+# docs
+_site/
+.jekyll-cache/
