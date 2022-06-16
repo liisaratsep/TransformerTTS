@@ -35,9 +35,9 @@ if __name__ == '__main__':
         print(f'Loading model from {args.path}')
         model = ForwardTransformer.load_model(args.path)
     else:
-        print(f'Trying to laod the latest checkpoint from model from {args.path}')
+        print(f'Trying to load the latest checkpoint from model from {args.save_directory}')
         if args.config_path is None:
-            config_path = Path(args.save_directory) / 'tts' / 'config.yaml'
+            args.config_path = str(Path(args.save_directory) / 'tts' / 'config.yaml')
         config_manager = TrainingConfigManager(mode=MODE, **vars(args))
         model = config_manager.load_model()
 

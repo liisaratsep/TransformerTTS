@@ -6,7 +6,6 @@ def tts_argparser(mode: TTSMode):
     parser = ArgumentParser()
 
     parser.add_argument('--config', dest='config_path', type=str,
-                        default='config/training_config.yaml' if mode != TTSMode.PREDICT else None,
                         help="Path to the configuration file")
     parser.add_argument('--seed', type=int)
 
@@ -74,5 +73,6 @@ def tts_argparser(mode: TTSMode):
 
     elif mode == TTSMode.WEIGHTS:
         parser.add_argument('--checkpoint-path', type=str)
+        parser.add_argument('--target-dir', type=str)
 
     return parser
