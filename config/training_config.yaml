@@ -128,7 +128,6 @@ tts_settings:
   validation_frequency: 5_000
   prediction_frequency: 5_000
   weights_save_frequency: 5_000
-  weights_save_starting_step: 5_000
   train_images_plotting_frequency: 1_000
   keep_n_weights: 5
   keep_checkpoint_every_n_hours: 12

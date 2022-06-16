@@ -20,7 +20,7 @@ args = parser.parse_args()
 for arg in vars(args):
     print('{}: {}'.format(arg, getattr(args, arg)))
 
-cm = TrainingConfigManager(mode=MODE, **args)
+cm = TrainingConfigManager(mode=MODE, **vars(args))
 
 if cm.seed is not None:
     np.random.seed(cm.seed)

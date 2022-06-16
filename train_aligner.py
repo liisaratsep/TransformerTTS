@@ -19,7 +19,7 @@ dynamic_memory_allocation()
 parser = tts_argparser(MODE)
 args = parser.parse_args()
 
-config_manager = TrainingConfigManager(mode=MODE, **args)
+config_manager = TrainingConfigManager(mode=MODE, **vars(args))
 
 if config_manager.seed is not None:
     np.random.seed(config_manager.seed)
@@ -133,7 +133,7 @@ if config['debug'] is True:
 print('\nTRAINING')
 
 texts = []
-for text_file in args.test_files.list:
+for text_file in args.test_files:
     with open(text_file, 'r') as file:
         texts.append(file.readlines())
 

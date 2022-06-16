@@ -20,7 +20,7 @@ dynamic_memory_allocation()
 if __name__ == '__main__':
     parser = tts_argparser(MODE)
     args = parser.parse_args()
-    config_manager = TrainingConfigManager(mode=MODE, **args)
+    config_manager = TrainingConfigManager(mode=MODE, **vars(args))
     if config_manager.seed is not None:
         np.random.seed(config_manager.seed)
         tf.random.set_seed(config_manager.seed)

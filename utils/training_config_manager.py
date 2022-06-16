@@ -14,6 +14,7 @@ class TTSMode(str, Enum):
     EXTRACT = "extract"
     TTS = "tts"
     PREDICT = "predict"
+    WEIGHTS = "weights"
 
 
 class TrainingConfigManager:
@@ -72,7 +73,7 @@ class TrainingConfigManager:
         all_config = {}
         with open(str(config_path), 'rb') as session_yaml:
             session_config = self.yaml.load(session_yaml)
-        if session_config['automatic']:
+        if 'automatic' in session_config and session_config['automatic']:
             return session_config
         else:
             for key in ['dataset', 'training_data_settings', 'audio_settings', 'text_settings',

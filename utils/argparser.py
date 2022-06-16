@@ -72,4 +72,7 @@ def tts_argparser(mode: TTSMode):
         parser.add_argument('--single', action='store_true')
         parser.add_argument('--speaker-id', default=0, type=int)
 
+    elif mode == TTSMode.WEIGHTS:
+        parser.add_argument('--checkpoint-path', type=str)
+
     return parser

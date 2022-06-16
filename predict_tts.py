@@ -38,7 +38,7 @@ if __name__ == '__main__':
         print(f'Trying to laod the latest checkpoint from model from {args.path}')
         if args.config_path is None:
             config_path = Path(args.save_directory) / 'tts' / 'config.yaml'
-        config_manager = TrainingConfigManager(mode=MODE, **args)
+        config_manager = TrainingConfigManager(mode=MODE, **vars(args))
         model = config_manager.load_model()
 
     file_name = f"{fname}_{model.config['step']}"
