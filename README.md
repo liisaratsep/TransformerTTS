@@ -64,7 +64,6 @@ Estonian and multispeaker samples can be found [here](https://tartunlp.github.io
 ## 📖 Contents
 
 - [Installation](#installation)
-- [API](#pre-trained-ljspeech-api)
 - [Dataset](#dataset)
 - [Training](#training)
     - [Aligner](#train-aligner-model)
@@ -188,12 +187,19 @@ tensorboard --logdir /logs/directory/
 
 ## Prediction
 
+### From the latest training checkpoint
+
+```commandline
+python predict_tts.py --text "Please, say something." --save-directory /path/to/save_dir/
+```
+
+
 ### With model weights
 
 From command line with
 
 ```commandline
-python predict_tts.py -t "Please, say something." -p /path/to/weights/
+python predict_tts.py --text "Please, say something." -p /path/to/weights_dir/
 ```
 
 Or in a python script
@@ -202,7 +208,7 @@ Or in a python script
 from model.models import ForwardTransformer
 from data.audio import Audio
 
-model = ForwardTransformer.load_model('/path/to/weights/')
+model = ForwardTransformer.load_model('/path/to/weights_dir/')
 audio = Audio.from_config(model.config)
 out = model.predict('Please, say something.', speaker_id=0)
 

@@ -7,7 +7,8 @@ from p_tqdm import p_uimap, p_umap
 from utils.logging_utils import SummaryManager
 from data.text import TextToTokens
 from data.datasets import DataReader
-from utils.training_config_manager import TrainingConfigManager, tts_argparser, TTSMode
+from utils.training_config_manager import TrainingConfigManager, TTSMode
+from utils.argparser import tts_argparser
 from data.audio import Audio
 from data.text import symbols
 
@@ -19,7 +20,8 @@ args = parser.parse_args()
 for arg in vars(args):
     print('{}: {}'.format(arg, getattr(args, arg)))
 
-cm = TrainingConfigManager(args, MODE)
+cm = TrainingConfigManager(mode=MODE, **args)
+
 if cm.seed is not None:
     np.random.seed(cm.seed)
 

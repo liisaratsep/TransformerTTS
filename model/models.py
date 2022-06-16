@@ -1,7 +1,7 @@
 from enum import Enum
 from pathlib import Path
 import subprocess
-from typing import Optional, Union
+from typing import Optional
 
 import tensorflow as tf
 import numpy as np
@@ -48,6 +48,7 @@ class Aligner(tf.keras.models.Model):
                  **kwargs):
         super(Aligner, self).__init__(**kwargs)
         self.config = self._make_config(locals())
+        # TODO: change default to embeddings to avoid diagonality constraints
         self.multispeaker = Multispeaker.GST if multispeaker is not None else None  # no embedding option for aligners
         self.n_speakers = n_speakers
         self.start_vec = tf.ones((1, mel_channels), dtype=tf.float32) * mel_start_value
@@ -111,6 +112,8 @@ class Aligner(tf.keras.models.Model):
             tf.TensorSpec(shape=(None, None, mel_channels), dtype=tf.float32),
             tf.TensorSpec(shape=(None, None, None, None), dtype=tf.float32),
         ]
+
+        self.loss_weights = [1., 1.]
         self.debug = debug
         self._apply_all_signatures()
 
@@ -237,8 +240,7 @@ class Aligner(tf.keras.models.Model):
         model_out, _ = self._gta_forward(inp, tar, stop_prob, training=False)
         return model_out
 
-    def _compile(self, stop_scaling, optimizer):
-        self.loss_weights = [1., 1.]
+    def compile_model(self, stop_scaling, optimizer):
         self.compile(loss=[masked_mean_absolute_error,
                            new_scaled_crossentropy(index=2, scaling=stop_scaling)],
                      loss_weights=self.loss_weights,
@@ -480,6 +482,7 @@ class ForwardTransformer(tf.keras.models.Model):
             tf.TensorSpec(shape=(None, None), dtype=tf.float32),
             tf.TensorSpec(shape=(None, None), dtype=tf.float32),
         ]
+        self.loss_weights = [1., 1., 3.]
         self.debug = debug
         self._apply_all_signatures()
 
@@ -527,8 +530,7 @@ class ForwardTransformer(tf.keras.models.Model):
         self.optimizer.apply_gradients(zip(gradients, self.trainable_variables))
         return model_out
 
-    def _compile(self, optimizer):
-        self.loss_weights = [1., 1., 3.]
+    def compile_model(self, optimizer):
         self.compile(loss=[masked_mean_absolute_error,
                            masked_mean_absolute_error,
                            masked_mean_absolute_error],

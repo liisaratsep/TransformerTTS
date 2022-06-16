@@ -5,7 +5,8 @@ import numpy as np
 from tqdm import tqdm
 from p_tqdm import p_umap
 
-from utils.training_config_manager import TrainingConfigManager, tts_argparser, TTSMode
+from utils.training_config_manager import TrainingConfigManager, TTSMode
+from utils.argparser import tts_argparser
 from utils.logging_utils import SummaryManager
 from data.datasets import AlignerPreprocessor
 from utils.alignments import get_durations_from_alignment
@@ -19,7 +20,7 @@ dynamic_memory_allocation()
 if __name__ == '__main__':
     parser = tts_argparser(MODE)
     args = parser.parse_args()
-    config_manager = TrainingConfigManager(args, MODE)
+    config_manager = TrainingConfigManager(mode=MODE, **args)
     if config_manager.seed is not None:
         np.random.seed(config_manager.seed)
         tf.random.set_seed(config_manager.seed)

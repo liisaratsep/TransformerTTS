@@ -4,7 +4,8 @@ import tensorflow as tf
 import numpy as np
 from tqdm import trange
 
-from utils.training_config_manager import TrainingConfigManager, tts_argparser, TTSMode
+from utils.training_config_manager import TrainingConfigManager, TTSMode
+from utils.argparser import tts_argparser
 from data.datasets import TTSDataset, TTSPreprocessor
 from utils.decorators import ignore_exception, time_it
 from utils.scheduling import piecewise_linear_schedule
@@ -19,7 +20,7 @@ dynamic_memory_allocation()
 parser = tts_argparser(MODE)
 args = parser.parse_args()
 
-config = TrainingConfigManager(args, MODE)
+config = TrainingConfigManager(mode=MODE, **args)
 
 if config.seed is not None:
     np.random.seed(config.seed)
@@ -144,9 +145,9 @@ display_target_symbol_duration_distributions()
 # main event
 print('\nTRAINING')
 losses = []
-texts = []
 
-for text_file in config_dict['test_file_path']:
+texts = []
+for text_file in args.test_files.list:
     with open(text_file, 'r') as file:
         texts.append(file.readlines())
 
@@ -191,6 +192,8 @@ for _ in t:
         save_path = manager_training.save()
     if (model.step % config_dict['weights_save_frequency'] == 0) & (
             model.step >= config_dict['weights_save_starting_step']):
+        # TODO: keep_n_weights
+        # TODO: keep_checkpoint_every_n_hours
         model.save_model(config.weights_dir / f'step_{model.step}')
         t.display(f'checkpoint at step {model.step}: {config.weights_dir / f"step_{model.step}"}',
                   pos=len(config_dict['n_steps_avg_losses']) + 2)
@@ -211,7 +214,7 @@ for _ in t:
                 if len(text_line) > 1:
                     speaker_id = text_line[1]
                 else:
-                    speaker_id = random.randint(0, model.n_speakers-1)
+                    speaker_id = random.randint(0, model.n_speakers - 1)
                 out = model.predict(text_line[0], encode=True, speaker_id=speaker_id)
                 wav = summary_manager.audio.reconstruct_waveform(out['mel'].numpy().T)
                 wavs.append(wav)

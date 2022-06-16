@@ -2,7 +2,8 @@ import tensorflow as tf
 import numpy as np
 from tqdm import trange
 
-from utils.training_config_manager import TrainingConfigManager, tts_argparser, TTSMode
+from utils.training_config_manager import TrainingConfigManager, TTSMode
+from utils.argparser import tts_argparser
 from data.datasets import AlignerDataset, AlignerPreprocessor
 from utils.decorators import ignore_exception, time_it
 from utils.scheduling import piecewise_linear_schedule, reduction_schedule
@@ -18,7 +19,7 @@ dynamic_memory_allocation()
 parser = tts_argparser(MODE)
 args = parser.parse_args()
 
-config_manager = TrainingConfigManager(args, MODE)
+config_manager = TrainingConfigManager(mode=MODE, **args)
 
 if config_manager.seed is not None:
     np.random.seed(config_manager.seed)
@@ -132,10 +133,9 @@ if config['debug'] is True:
 print('\nTRAINING')
 
 texts = []
-for text_file in config['test_stencences']:
+for text_file in args.test_files.list:
     with open(text_file, 'r') as file:
-        text = file.readlines()
-    texts.append(text)
+        texts.append(file.readlines())
 
 losses = []
 test_mel, test_phonemes, _, test_fname = valid_dataset.next_batch()

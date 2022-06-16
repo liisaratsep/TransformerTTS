@@ -2,7 +2,8 @@ from pathlib import Path
 
 import numpy as np
 
-from utils.training_config_manager import tts_argparser, TTSMode
+from utils.training_config_manager import TrainingConfigManager, TTSMode
+from utils.argparser import tts_argparser
 from model.factory import tts_ljspeech
 from data.audio import Audio
 from model.models import ForwardTransformer
@@ -13,6 +14,9 @@ if __name__ == '__main__':
     parser = tts_argparser(MODE)
     args = parser.parse_args()
 
+    fname = None
+    text = None
+
     if args.file is not None:
         with open(args.file, 'r') as file:
             text = file.readlines()
@@ -21,21 +25,27 @@ if __name__ == '__main__':
         text = [args.text]
         fname = 'custom_text'
     else:
-        fname = None
-        text = None
         print(f'Specify either an input text (-t "some text") or a text input file (-f /path/to/file.txt)')
         exit()
+
     # load the appropriate model
     outdir = Path(args.outdir) if args.outdir is not None else Path('.')
+
     if args.path is not None:
         print(f'Loading model from {args.path}')
         model = ForwardTransformer.load_model(args.path)
     else:
-        model = tts_ljspeech(args.step)
+        print(f'Trying to laod the latest checkpoint from model from {args.path}')
+        if args.config_path is None:
+            config_path = Path(args.save_directory) / 'tts' / 'config.yaml'
+        config_manager = TrainingConfigManager(mode=MODE, **args)
+        model = config_manager.load_model()
+
     file_name = f"{fname}_{model.config['step']}"
     outdir = outdir / 'outputs' / f'{fname}'
     outdir.mkdir(exist_ok=True, parents=True)
     output_path = (outdir / file_name).with_suffix('.wav')
+
     audio = Audio.from_config(model.config)
     print(f'Output wav under {output_path.parent}')
     wavs = []

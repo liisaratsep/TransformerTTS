@@ -1,10 +1,3 @@
-# PATHS: change accordingly
-paths:
-  wav_directory: '/path/to/wav_directory' # path to directory cointaining the wavs
-  metadata_path: '/path/to/metadata.csv'  # name of metadata file that describes the wav_directory
-  save_directory: '/path/to/save_directory'   # weights and logs are stored here
-  train_data_directory: 'transformer_tts_data'   # training data is stored here
-
 # DATASET AND SPEAKER SETTINGS
 dataset:
   metadata_reader: ljspeech # raw data naming for default data reader (select function from data/metadata_readers.py)
@@ -143,5 +136,3 @@ tts_settings:
   keep_checkpoint_every_n_hours: 12
   n_steps_avg_losses: [100, 500, 1_000, 5_000]  # command line display of average loss values for the last n steps
   prediction_start_step: 4_000
-  test_file_path:
-    - test_sentences.txt
