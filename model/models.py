@@ -66,7 +66,7 @@ class Aligner(tf.keras.models.Model):
                                                   alphabet=alphabet,
                                                   collapse_whitespace=collapse_whitespace,
                                                   gst=(self.multispeaker == Multispeaker.GST),
-                                                  zfill=len(str(n_speakers)))
+                                                  zfill=len(str(int(n_speakers-1))))
         self.encoder_prenet = tf.keras.layers.Embedding(self.text_pipeline.tokenizer.vocab_size,
                                                         encoder_prenet_dimension,
                                                         name='Embedding')
@@ -410,7 +410,7 @@ class ForwardTransformer(tf.keras.models.Model):
                                                   alphabet=alphabet,
                                                   collapse_whitespace=collapse_whitespace,
                                                   gst=(self.multispeaker == Multispeaker.GST),
-                                                  zfill=len(str(n_speakers)))
+                                                  zfill=len(str(int(n_speakers-1))))
         self.symbols = self.text_pipeline.tokenizer.alphabet
         self.mel_channels = mel_channels
         self.encoder_prenet = tf.keras.layers.Embedding(self.text_pipeline.tokenizer.vocab_size,

@@ -90,8 +90,6 @@ aligner_settings:
   n_steps_avg_losses: [100, 500, 1_000, 5_000]  # command line display of average loss values for the last n steps
   prediction_start_step: 10_000 # step after which to predict durations at validation time
   prediction_frequency: 5_000
-  test_stencences:
-    - aligner_test_sentences.txt
 
 tts_settings:
   # ARCHITECTURE
