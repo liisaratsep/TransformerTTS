@@ -13,7 +13,9 @@ title: Estonian TTS with non-autoregressive Transformers
 for many languages, the methodology of Estonian text-to-speech synthesis has not been revised for neural methods. This
 paper evaluates the quality of Estonian text-to-speech with Transformer-based models using different language-specific
 data processing steps. Additionally, we conduct a human evaluation to show how well these models can learn the patterns
-of Estonian pronunciation, given different amounts of training data and varying degrees of phonetic information.
+of Estonian pronunciation, given different amounts of training data and varying degrees of phonetic information. Our
+error analysis shows that using a simple multi-speaker approach can significantly decrease the number of pronunciation
+errors, while some information can also be helpful to a smaller extent.
 
 ## 🎧 Evaluation samples
 
