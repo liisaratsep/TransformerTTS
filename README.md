@@ -17,14 +17,27 @@ are:
 
 - Support for grapheme-based synthesis
 - Multi-speaker synthesis
-- Pretrained models for Estonian
+- [Pretrained models](https://github.com/TartuNLP/TransformerTTS/releases) for Estonian
 - Open source TTS applications:
     - [Kratt application](https://koodivaramu.eesti.ee/tartunlp/text-to-speech)
     - [API](https://github.com/TartuNLP/text-to-speech-api)
       \+ [worker](https://github.com/TartuNLP/text-to-speech-worker) combo.
 - Numerous minor changes to streamline training and make the repository easier to use with new datasets.
 
-This code is based, among others, on the following papers:
+When using this repository or models for research, please cite the following paper:
+
+```
+@article{R2tsep_2022,
+  title = {Estonian Text-to-Speech Synthesis with Non-autoregressive Transformers},
+  author = {Liisa R\"{a}tsep and Rasmus Lellep and Mark Fishel},
+  journal = {Baltic Journal of Modern Computing}
+  volume = {10},
+  number = {3},
+  year = 2022	
+}
+```
+
+The original code is based, among others, on the following papers:
 
 - [Neural Speech Synthesis with Transformer Network](https://arxiv.org/abs/1809.08895)
 - [FastSpeech: Fast, Robust and Controllable Text to Speech](https://arxiv.org/abs/1905.09263)
@@ -36,8 +49,6 @@ The models are compatible with the pre-trained vocoders:
 - [MelGAN](https://github.com/seungwonpark/melgan)
 - [HiFiGAN](https://github.com/jik876/hifi-gan)
 
-For quick inference with these vocoders, checkout the Vocoding branch.
-
 Being non-autoregressive, this Transformer model is:
 
 - Robust: No repeats and failed attention modes for challenging sentences.
@@ -46,8 +57,8 @@ Being non-autoregressive, this Transformer model is:
 
 ## 🔈 Samples
 
-Samples from the original implementation can be found [here](https://tartunlp.github.io/TransformerTTS/original).
 Estonian and multispeaker samples can be found [here](https://tartunlp.github.io/TransformerTTS/).
+Samples from the original implementation can be found [here](https://tartunlp.github.io/TransformerTTS/original).
 
 ## Updates
 
@@ -79,17 +90,15 @@ Make sure you have:
 
 Install espeak as phonemizer backend (for macOS use brew) if you plan to use phonemized inputs:
 
-```
+```commandline
 sudo apt-get install espeak
 ```
 
 Then install the rest with pip:
 
-```
+```commandline
 pip install -r requirements.txt
 ```
-
-Or use the `environment.yml` file to set up a Conda environment.
 
 ## Dataset
 
@@ -97,41 +106,41 @@ You can directly use [LJSpeech](https://keithito.com/LJ-Speech-Dataset/) to crea
 
 #### Configuration
 
-* If training on LJSpeech, or if unsure, simply use ```config/training_config.yaml``` to
+* If training on LJSpeech, or if unsure, simply use `config/training_config.yaml` to
   create [MelGAN](https://github.com/seungwonpark/melgan) or [HiFiGAN](https://github.com/jik876/hifi-gan) compatible
   models
-    * swap the content of ```data_config_wavernn.yaml``` in ```config/training_config.yaml``` to create models
-      compatible with [WaveRNN](https://github.com/fatchord/WaveRNN)
-* **EDIT PATHS**: in `config/training_config.yaml` edit the paths to point at your dataset and log folders **OR** use
-  the command line flags to override them. Information about configuration flags can be seen with the `-h` flag of each
-  script.
+    * use `config/training_config_wavernn.yaml` to create models compatible
+      with [WaveRNN](https://github.com/fatchord/WaveRNN)
+* Use the command line flags to specify dataset location and where preprocessed data, logs and model files should be
+  saved. Information about configuration flags can be seen with the `-h` flag of each script.
 
 #### Custom dataset
 
 Prepare a folder containing your metadata and wav files, for instance
 
 ```
-|- dataset_folder/
-|   |- metadata.csv
-|   |- wavs/
-|       |- file1.wav
-|       |- ...
+dataset_folder/
+├── metadata.csv
+└── wavs/
+    ├── file_1.wav
+    ├── ...
+    └── file_n.wav
 ```
 
 if `metadata.csv` has the following format
-``` wav_file_name|transcription ``` or ``` wav_file_name|transcription|speaker_id ```
-you can use the ljspeech preprocessor in ```data/metadata_readers.py```, otherwise add your own under the same file.
+`wav_file_name|transcription` or `wav_file_name|transcription|speaker_id`
+you can use the ljspeech preprocessor in `data/metadata_readers.py`, otherwise add your own under the same file.
 
 Make sure that:
 
-- the metadata reader function name is the same as ```metadata_reader``` field in ```training_config.yaml```.
-- the metadata file (can be anything) is specified under ```metadata_path``` in ```training_config.yaml```
+- the metadata reader function name is the same as `metadata_reader` field in `training_config.yaml`.
+- the metadata file (can be anything) is specified under `metadata_path` in `training_config.yaml`
 - for multispeaker training, review the `multispeaker` and `n_speakers` values.
 - to disable phonemization, edit the `text_settings` section of the configuration file.
 
 ## Training
 
-Change the ```--config``` argument based on the configuration of your choice.
+Change the `--config` argument based on the configuration of your choice.
 
 ### Train Aligner Model
 
@@ -159,7 +168,7 @@ First use the aligner model to create the durations dataset
 python extract_durations.py --config config/training_config.yaml
 ```
 
-this will add the duration as well as the char-wise pitch folders to the training data directory.
+this will add the duration as well as the per character pitch values into folders to the training data directory.
 
 #### Training
 
@@ -193,13 +202,12 @@ tensorboard --logdir /logs/directory/
 python predict_tts.py --text "Please, say something." --save-directory /path/to/save_dir/
 ```
 
-
 ### With model weights
 
 From command line with
 
 ```commandline
-python predict_tts.py --text "Please, say something." -p /path/to/weights_dir/
+python predict_tts.py --text "Please, say something." --path /path/to/weights_dir/
 ```
 
 Or in a python script
@@ -212,7 +220,7 @@ model = ForwardTransformer.load_model('/path/to/weights_dir/')
 audio = Audio.from_config(model.config)
 out = model.predict('Please, say something.', speaker_id=0)
 
-# Convert spectrogram to wav (with griffin lim)
+# Convert spectrogram to wav (with griffin-lim)
 wav = audio.reconstruct_waveform(out['mel'].numpy().T)
 ```
 
@@ -220,20 +228,18 @@ wav = audio.reconstruct_waveform(out['mel'].numpy().T)
 
 Newer models are added to the [Releases](https://github.com/TartuNLP/TransformerTTS/releases) of this repository.
 
-Access the original pre-trained models with the API call.
+Original repository's models based on LJSpeech.
 
-Old weights
-
-| Model URL | Commit | Vocoder Commit|
-|---|---|---|
-|[ljspeech_tts_model](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/ljspeech_weights_tts.zip)| 0cd7d33 | aca5990 |
-|[ljspeech_melgan_forward_model](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_melgan_forward_transformer.zip) | 1c1cb03| aca5990 |
-|[ljspeech_melgan_autoregressive_model_v2](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_melgan_autoregressive_transformer.zip) | 1c1cb03| aca5990 |
-|[ljspeech_wavernn_forward_model](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_wavernn_forward_transformer.zip) | 1c1cb03| 3595219 |
-|[ljspeech_wavernn_autoregressive_model_v2](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_wavernn_autoregressive_transformer.zip) | 1c1cb03| 3595219 |
-|[ljspeech_wavernn_forward_model](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_forward_transformer.zip) | d9ccee6| 3595219 |
-|[ljspeech_wavernn_autoregressive_model_v2](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_autoregressive_transformer.zip) | d9ccee6| 3595219 |
-|[ljspeech_wavernn_autoregressive_model_v1](https://github.com/as-ideas/tts_model_outputs/tree/master/ljspeech_transformertts) | 2f3a1b5| 3595219 |
+| Model URL                                                                                                                                                              | Commit  | Vocoder Commit |
+|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------|----------------|
+| [ljspeech_tts_model](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/ljspeech_weights_tts.zip)                                                             | 0cd7d33 | aca5990        |
+| [ljspeech_melgan_forward_model](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_melgan_forward_transformer.zip)                    | 1c1cb03 | aca5990        |
+| [ljspeech_melgan_autoregressive_model_v2](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_melgan_autoregressive_transformer.zip)   | 1c1cb03 | aca5990        |
+| [ljspeech_wavernn_forward_model](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_wavernn_forward_transformer.zip)                  | 1c1cb03 | 3595219        |
+| [ljspeech_wavernn_autoregressive_model_v2](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_wavernn_autoregressive_transformer.zip) | 1c1cb03 | 3595219        |
+| [ljspeech_wavernn_forward_model](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_forward_transformer.zip)                          | d9ccee6 | 3595219        |
+| [ljspeech_wavernn_autoregressive_model_v2](https://public-asai-dl-models.s3.eu-central-1.amazonaws.com/TransformerTTS/ljspeech_autoregressive_transformer.zip)         | d9ccee6 | 3595219        |
+| [ljspeech_wavernn_autoregressive_model_v1](https://github.com/as-ideas/tts_model_outputs/tree/master/ljspeech_transformertts)                                          | 2f3a1b5 | 3595219        |
 
 ## Maintainers
 

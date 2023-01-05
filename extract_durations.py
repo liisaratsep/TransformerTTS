@@ -1,26 +1,28 @@
-import pickle
-
-import tensorflow as tf
-import numpy as np
-from tqdm import tqdm
-from p_tqdm import p_umap
-
 from utils.training_config_manager import TrainingConfigManager, TTSMode
 from utils.argparser import tts_argparser
-from utils.logging_utils import SummaryManager
-from data.datasets import AlignerPreprocessor
-from utils.alignments import get_durations_from_alignment
-from utils.scripts_utils import dynamic_memory_allocation
-from data.datasets import AlignerDataset
-from data.datasets import DataReader
 
 MODE = TTSMode("extract")
-dynamic_memory_allocation()
+parser = tts_argparser(MODE)
+args = parser.parse_args()
+config_manager = TrainingConfigManager(mode=MODE, **vars(args))
 
 if __name__ == '__main__':
-    parser = tts_argparser(MODE)
-    args = parser.parse_args()
-    config_manager = TrainingConfigManager(mode=MODE, **vars(args))
+    import pickle
+
+    import tensorflow as tf
+    import numpy as np
+    from tqdm import tqdm
+    from p_tqdm import p_umap
+
+    from utils.logging_utils import SummaryManager
+    from data.datasets import AlignerPreprocessor
+    from utils.alignments import get_durations_from_alignment
+    from utils.scripts_utils import dynamic_memory_allocation
+    from data.datasets import AlignerDataset
+    from data.datasets import DataReader
+
+    dynamic_memory_allocation()
+
     if config_manager.seed is not None:
         np.random.seed(config_manager.seed)
         tf.random.set_seed(config_manager.seed)
@@ -103,9 +105,9 @@ if __name__ == '__main__':
         summary_manager.add_histogram(values=all_durations, tag='ExtractedDurations', buckets=buckets)
 
     if not args.skip_char_pitch:
-        def _pitch_per_char(pitch, durations, mel_len):
-            durs_cum = np.cumsum(np.pad(durations, (1, 0)))
-            pitch_char = np.zeros((durations.shape[0],), dtype=np.float)
+        def _pitch_per_char(pitch, _durations, mel_len):
+            durs_cum = np.cumsum(np.pad(_durations, (1, 0)))
+            pitch_char = np.zeros((_durations.shape[0],), dtype=np.float)
             for idx, a, b in zip(range(mel_len), durs_cum[:-1], durs_cum[1:]):
                 values = pitch[a:b][np.where(pitch[a:b] != 0.0)[0]]
                 values = values[np.where((values * pitch_stats['pitch_std'] + pitch_stats['pitch_mean']) < 400)[0]]
@@ -116,17 +118,19 @@ if __name__ == '__main__':
         def process_per_char_pitch(sample_name: str):
             try:
                 pitch = np.load((config_manager.pitch_dir / sample_name).with_suffix('.npy').as_posix())
-                durations = np.load((config_manager.duration_dir / sample_name).with_suffix('.npy').as_posix())
-                mel = np.load((config_manager.mel_dir / sample_name).with_suffix('.npy').as_posix())
-                char_wise_pitch = _pitch_per_char(pitch, durations, mel.shape[0])
+                _durations = np.load((config_manager.duration_dir / sample_name).with_suffix('.npy').as_posix())
+                _mel = np.load((config_manager.mel_dir / sample_name).with_suffix('.npy').as_posix())
+                char_wise_pitch = _pitch_per_char(pitch, _durations, _mel.shape[0])
                 np.save((config_manager.pitch_per_char / sample_name).with_suffix('.npy').as_posix(), char_wise_pitch)
             except Exception as e:
                 print(e)
                 print(f"Failed to process {sample_name}")
+
 
         metadatareader = DataReader.from_config(config_manager, kind='phonemized', scan_wavs=False)
         pitch_stats = pickle.load(open(config_manager.data_dir / 'pitch_stats.pkl', 'rb'))
         print(f'\nComputing phoneme-wise pitch')
         print(f'{len(metadatareader.filenames)} items found in {metadatareader.metadata_path}.')
         wav_iter = p_umap(process_per_char_pitch, metadatareader.filenames)
+
     print('Done.')

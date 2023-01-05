@@ -1,18 +1,18 @@
-from pathlib import Path
-
-import numpy as np
-
 from utils.training_config_manager import TrainingConfigManager, TTSMode
 from utils.argparser import tts_argparser
-from model.factory import tts_ljspeech
-from data.audio import Audio
-from model.models import ForwardTransformer
 
 MODE = TTSMode("predict")
 
+parser = tts_argparser(MODE)
+args = parser.parse_args()
+
 if __name__ == '__main__':
-    parser = tts_argparser(MODE)
-    args = parser.parse_args()
+    from pathlib import Path
+
+    import numpy as np
+
+    from data.audio import Audio
+    from model.models import ForwardTransformer
 
     fname = None
     text = None
@@ -36,8 +36,6 @@ if __name__ == '__main__':
         model = ForwardTransformer.load_model(args.path)
     else:
         print(f'Trying to load the latest checkpoint from model from {args.save_directory}')
-        if args.config_path is None:
-            args.config_path = str(Path(args.save_directory) / 'tts' / 'config.yaml')
         config_manager = TrainingConfigManager(mode=MODE, **vars(args))
         model = config_manager.load_model()
 

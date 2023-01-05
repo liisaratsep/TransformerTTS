@@ -20,12 +20,11 @@ class TTSMode(str, Enum):
 class TrainingConfigManager:
     def __init__(self,
                  mode: TTSMode = TTSMode.PREDICT,
-                 config_path: str = "config/training_config.yaml",
+                 config_path: Optional[str] = None,
                  seed: Optional[int] = None,
                  wav_directory: str = "",
                  metadata_path: str = "",
                  save_directory: str = "",
-                 train_data_directory: str = "",
                  mel_directory: str = "mels",
                  pitch_directory: str = "pitch",
                  duration_directory: str = "duration",
@@ -37,6 +36,13 @@ class TrainingConfigManager:
         else:
             self.model_kind = 'tts'
 
+        self.base_dir = Path(save_directory) / self.model_kind
+        self.log_dir = self.base_dir / 'logs'
+        self.weights_dir = self.base_dir / 'weights'
+
+        if config_path is None:
+            config_path = str(self.base_dir / 'config.yaml')
+
         self.yaml = ruamel.yaml.YAML()
         self.config = self._load_config(config_path)
 
@@ -46,19 +52,15 @@ class TrainingConfigManager:
         self.wav_directory = Path(wav_directory)
         self.metadata_path = Path(metadata_path)
 
-        self.data_dir = Path(train_data_directory)
+        self.data_dir = Path(save_directory) / "metadata"
         self.train_metadata_path = self.data_dir / "train_metadata.txt"
         self.valid_metadata_path = self.data_dir / "valid_metadata.txt"
         self.phonemized_metadata_path = self.data_dir / "phonemized_metadata.txt"
 
-        self.mel_dir = self.data_dir / mel_directory
-        self.pitch_dir = self.data_dir / pitch_directory
-        self.duration_dir = self.data_dir / duration_directory
-        self.pitch_per_char = self.data_dir / character_pitch_directory
-
-        self.base_dir = Path(save_directory) / self.model_kind
-        self.log_dir = self.base_dir / 'logs'
-        self.weights_dir = self.base_dir / 'weights'
+        self.mel_dir = Path(mel_directory)
+        self.pitch_dir = Path(pitch_directory)
+        self.duration_dir = Path(duration_directory)
+        self.pitch_per_char = Path(character_pitch_directory)
 
         # training parameters
         self.learning_rate = np.array(self.config['learning_rate_schedule'])[0, 1].astype(np.float32)

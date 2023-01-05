@@ -142,3 +142,6 @@ vocoding/
 # docs
 _site/
 .jekyll-cache/
+
+# custom configuration files
+config/*.*.yaml
