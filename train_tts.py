@@ -1,12 +1,14 @@
+import logging
+
 from utils.training_config_manager import TrainingConfigManager, TTSMode
 from utils.argparser import tts_argparser
 
 MODE = TTSMode("tts")
-
 parser = tts_argparser(MODE)
 args = parser.parse_args()
-
 config = TrainingConfigManager(mode=MODE, **vars(args))
+
+logger = logging.getLogger(__name__)
 
 if __name__ == '__main__':
     import random
@@ -145,16 +147,16 @@ if __name__ == '__main__':
 
     checkpoint.restore(manager_training.latest_checkpoint)
     if manager_training.latest_checkpoint:
-        print(f'\nresuming training from step {model.step} ({manager_training.latest_checkpoint})')
+        logger.info(f'\nresuming training from step {model.step} ({manager_training.latest_checkpoint})')
     else:
-        print(f'\nstarting training from scratch')
+        logger.info(f'\nstarting training from scratch')
 
     if config_dict['debug'] is True:
-        print('\nWARNING: DEBUG is set to True. Training in eager mode.')
+        logger.warning('\nDEBUG is set to True. Training in eager mode.')
 
     display_target_symbol_duration_distributions()
     # main event
-    print('\nTRAINING')
+    logger.info('\nTRAINING')
     losses = []
 
     texts = []
@@ -233,4 +235,4 @@ if __name__ == '__main__':
                 summary_manager.add_audio(f'Text file input', wavs.numpy(), sr=summary_manager.config['sampling_rate'],
                                           step=summary_manager.global_step)
 
-    print('Done.')
+    logger.info('Done.')

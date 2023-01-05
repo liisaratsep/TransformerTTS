@@ -1,6 +1,6 @@
 from pathlib import Path
 from random import Random
-from typing import List, Union, Optional
+from typing import List, Optional
 
 import numpy as np
 import tensorflow as tf

@@ -1,11 +1,14 @@
+import logging
+
 from utils.training_config_manager import TrainingConfigManager, TTSMode
 from utils.argparser import tts_argparser
 
 MODE = TTSMode("aligner")
 parser = tts_argparser(MODE)
 args = parser.parse_args()
+config = TrainingConfigManager(mode=MODE, **vars(args))
 
-config_manager = TrainingConfigManager(mode=MODE, **vars(args))
+logger = logging.getLogger(__name__)
 
 if __name__ == '__main__':
     import tensorflow as tf
@@ -23,9 +26,9 @@ if __name__ == '__main__':
 
     dynamic_memory_allocation()
 
-    if config_manager.seed is not None:
-        np.random.seed(config_manager.seed)
-        tf.random.set_seed(config_manager.seed)
+    if config.seed is not None:
+        np.random.seed(config.seed)
+        tf.random.set_seed(config.seed)
 
 
     def cut_with_durations(durations, _mel, _phonemes, snippet_len=10):
@@ -88,75 +91,75 @@ if __name__ == '__main__':
         return _val_loss['loss']
 
 
-    config = config_manager.config
-    config_manager.create_remove_dirs(clear_dir=args.clear_dir,
-                                      clear_logs=args.clear_logs,
-                                      clear_weights=args.clear_weights)
-    config_manager.dump_config()
-    config_manager.print_config()
+    config.create_remove_dirs(clear_dir=args.clear_dir,
+                              clear_logs=args.clear_logs,
+                              clear_weights=args.clear_weights)
+    config.dump_config()
+    config.print_config()
 
     # get model, prepare data for model, create datasets
-    model = config_manager.get_model()
-    config_manager.compile_model(model)
-    data_prep = AlignerPreprocessor.from_config(config_manager,  # TODO: tokenizer is now static
+    model = config.get_model()
+    config.compile_model(model)
+    data_prep = AlignerPreprocessor.from_config(config,
                                                 tokenizer=model.text_pipeline.tokenizer)
-    train_data_handler = AlignerDataset.from_config(config_manager,
+    train_data_handler = AlignerDataset.from_config(config,
                                                     preprocessor=data_prep,
                                                     kind='train')
-    valid_data_handler = AlignerDataset.from_config(config_manager,
+    valid_data_handler = AlignerDataset.from_config(config,
                                                     preprocessor=data_prep,
                                                     kind='valid')
 
-    train_dataset = train_data_handler.get_dataset(bucket_batch_sizes=config['bucket_batch_sizes'],
-                                                   bucket_boundaries=config['bucket_boundaries'],
+    train_dataset = train_data_handler.get_dataset(bucket_batch_sizes=config.config['bucket_batch_sizes'],
+                                                   bucket_boundaries=config.config['bucket_boundaries'],
                                                    shuffle=True)
-    valid_dataset = valid_data_handler.get_dataset(bucket_batch_sizes=config['val_bucket_batch_size'],
-                                                   bucket_boundaries=config['bucket_boundaries'],
+    valid_dataset = valid_data_handler.get_dataset(bucket_batch_sizes=config.config['val_bucket_batch_size'],
+                                                   bucket_boundaries=config.config['bucket_boundaries'],
                                                    shuffle=False, drop_remainder=True)
 
     # create logger and checkpointer and restore the latest model
 
-    summary_manager = SummaryManager(model=model, log_dir=config_manager.log_dir, config=config)
+    summary_manager = SummaryManager(model=model, log_dir=config.log_dir, config=config.config)
     checkpoint = tf.train.Checkpoint(step=tf.Variable(1),
                                      optimizer=model.optimizer,
                                      net=model)
-    manager = tf.train.CheckpointManager(checkpoint, str(config_manager.weights_dir),
-                                         max_to_keep=config['keep_n_weights'],
-                                         keep_checkpoint_every_n_hours=config['keep_checkpoint_every_n_hours'])
-    manager_training = tf.train.CheckpointManager(checkpoint, str(config_manager.weights_dir / 'latest'),
+    manager = tf.train.CheckpointManager(checkpoint, str(config.weights_dir),
+                                         max_to_keep=config.config['keep_n_weights'],
+                                         keep_checkpoint_every_n_hours=config.config[
+                                             'keep_checkpoint_every_n_hours'])
+    manager_training = tf.train.CheckpointManager(checkpoint, str(config.weights_dir / 'latest'),
                                                   max_to_keep=1, checkpoint_name='latest')
 
     checkpoint.restore(manager_training.latest_checkpoint)
     if manager_training.latest_checkpoint:
-        print(f'\nresuming training from step {model.step} ({manager_training.latest_checkpoint})')
+        logger.info(f'\nresuming training from step {model.step} ({manager_training.latest_checkpoint})')
     else:
-        print(f'\nstarting training from scratch')
+        logger.info(f'\nstarting training from scratch')
 
-    if config['debug'] is True:
-        print('\nWARNING: DEBUG is set to True. Training in eager mode.')
+    if config.config['debug'] is True:
+        logger.warning('\nDEBUG is set to True. Training in eager mode.')
     # main event
-    print('\nTRAINING')
+    logger.info('\nTRAINING')
+    losses = []
 
     texts = []
     for text_file in args.test_files:
         with open(text_file, 'r') as file:
             texts.append(file.readlines())
 
-    losses = []
     test_mel, test_phonemes, _, test_fname = valid_dataset.next_batch()
     val_test_sample, val_test_fname, val_test_mel = test_phonemes[0], test_fname[0], test_mel[0]
     val_test_sample = tf.boolean_mask(val_test_sample, val_test_sample != 0)
 
     _ = train_dataset.next_batch()
-    t = trange(model.step, config['max_steps'], leave=True)
+    t = trange(model.step, config.config['max_steps'], leave=True)
     for _ in t:
         t.set_description(f'step {model.step}')
         mel, phonemes, stop, sample_name = train_dataset.next_batch()
-        learning_rate = piecewise_linear_schedule(model.step, config['learning_rate_schedule'])
-        reduction_factor = reduction_schedule(model.step, config['reduction_factor_schedule'])
+        learning_rate = piecewise_linear_schedule(model.step, config.config['learning_rate_schedule'])
+        reduction_factor = reduction_schedule(model.step, config.config['reduction_factor_schedule'])
         t.display(f'reduction factor {reduction_factor}', pos=10)
-        force_encoder_diagonal = model.step < config['force_encoder_diagonal_steps']
-        force_decoder_diagonal = model.step < config['force_decoder_diagonal_steps']
+        force_encoder_diagonal = model.step < config.config['force_encoder_diagonal_steps']
+        force_decoder_diagonal = model.step < config.config['force_decoder_diagonal_steps']
         model.set_constants(learning_rate=learning_rate,
                             reduction_factor=reduction_factor,
                             force_encoder_diagonal=force_encoder_diagonal,
@@ -168,7 +171,7 @@ if __name__ == '__main__':
         losses.append(float(output['loss']))
 
         t.display(f'step loss: {losses[-1]}', pos=1)
-        for pos, n_steps in enumerate(config['n_steps_avg_losses']):
+        for pos, n_steps in enumerate(config.config['n_steps_avg_losses']):
             if len(losses) > n_steps:
                 t.display(f'{n_steps}-steps average loss: {sum(losses[-n_steps:]) / n_steps}', pos=pos + 2)
 
@@ -177,7 +180,7 @@ if __name__ == '__main__':
         summary_manager.display_scalar(tag='Meta/reduction_factor', scalar_value=model.r)
         summary_manager.display_scalar(scalar_value=t.avg_time, tag='Meta/iter_time')
         summary_manager.display_scalar(scalar_value=tf.shape(sample_name)[0], tag='Meta/batch_size')
-        if model.step % config['train_images_plotting_frequency'] == 0:
+        if model.step % config.config['train_images_plotting_frequency'] == 0:
             summary_manager.display_attention_heads(output, tag='TrainAttentionHeads')
             summary_manager.display_mel(mel=output['mel'][0], tag=f'Train/predicted_mel')
             for layer, k in enumerate(output['decoder_attention'].keys()):
@@ -200,19 +203,22 @@ if __name__ == '__main__':
 
         if model.step % 1000 == 0:
             save_path = manager_training.save()
-        if model.step % config['weights_save_frequency'] == 0:
+        if model.step % config.config['weights_save_frequency'] == 0:
             save_path = manager.save()
-            t.display(f'checkpoint at step {model.step}: {save_path}', pos=len(config['n_steps_avg_losses']) + 2)
+            t.display(f'checkpoint at step {model.step}: {save_path}',
+                      pos=len(config.config['n_steps_avg_losses']) + 2)
 
-        if model.step % config['validation_frequency'] == 0 and (model.step >= config['prediction_start_step']):
+        if model.step % config.config['validation_frequency'] == 0 and (
+                model.step >= config.config['prediction_start_step']):
             val_loss, time_taken = validate(_model=model,
                                             val_dataset=valid_dataset,
                                             _summary_manager=summary_manager,
-                                            weighted_durations=config['extract_attention_weighted'])
+                                            weighted_durations=config.config['extract_attention_weighted'])
             t.display(f'validation loss at step {model.step}: {val_loss} (took {time_taken}s)',
-                      pos=len(config['n_steps_avg_losses']) + 3)
+                      pos=len(config.config['n_steps_avg_losses']) + 3)
 
-        if model.step % config['prediction_frequency'] == 0 and (model.step >= config['prediction_start_step']):
+        if model.step % config.config['prediction_frequency'] == 0 and (
+                model.step >= config.config['prediction_start_step']):
             for j, text in enumerate(texts):
                 for i, text_line in enumerate(text):
                     text_line = text_line.split('|')
@@ -235,4 +241,4 @@ if __name__ == '__main__':
             summary_manager.add_audio(f'Predictions/val_sample {val_test_fname.numpy().decode("utf-8")}', wav.numpy(),
                                       sr=summary_manager.config['sampling_rate'],
                                       step=summary_manager.global_step)
-    print('Done.')
+    logger.info('Done.')

@@ -1,3 +1,4 @@
+import logging
 from enum import Enum
 from pathlib import Path
 import subprocess
@@ -12,6 +13,8 @@ from utils.losses import weighted_sum_losses, masked_mean_absolute_error, new_sc
 from data.text import TextToTokens
 from model.layers import DecoderPrenet, Postnet, StatPredictor, Expand, SelfAttentionBlocks, CrossAttentionBlocks
 from utils.metrics import batch_diagonal_mask
+
+logger = logging.getLogger(__name__)
 
 
 class Multispeaker(str, Enum):
@@ -66,7 +69,7 @@ class Aligner(tf.keras.models.Model):
                                                   alphabet=alphabet,
                                                   collapse_whitespace=collapse_whitespace,
                                                   gst=(self.multispeaker == Multispeaker.GST),
-                                                  zfill=len(str(int(n_speakers-1))))
+                                                  zfill=len(str(int(n_speakers - 1))))
         self.encoder_prenet = tf.keras.layers.Embedding(self.text_pipeline.tokenizer.vocab_size,
                                                         encoder_prenet_dimension,
                                                         name='Embedding')
@@ -276,7 +279,7 @@ class Aligner(tf.keras.models.Model):
         if len(tf.shape(mel)) < 3:
             mel = tf.expand_dims(mel, axis=0)
         if self.r != 1:
-            print('WARNING: reduction factor != 1.')
+            logger.warning('reduction factor != 1.')
         if mels_have_start_end_vectors:
             tar_inp = mel[:, :-1]
         else:
@@ -307,7 +310,7 @@ class Aligner(tf.keras.models.Model):
                         'encoder_attention': encoder_attention}
             if int(tf.argmax(stop_pred, axis=-1)) == self.stop_prob_index:
                 if verbose:
-                    print('Stopping')
+                    logger.info('Stopping')
                 break
         return out_dict
 
@@ -410,7 +413,7 @@ class ForwardTransformer(tf.keras.models.Model):
                                                   alphabet=alphabet,
                                                   collapse_whitespace=collapse_whitespace,
                                                   gst=(self.multispeaker == Multispeaker.GST),
-                                                  zfill=len(str(int(n_speakers-1))))
+                                                  zfill=len(str(int(n_speakers - 1))))
         self.symbols = self.text_pipeline.tokenizer.alphabet
         self.mel_channels = mel_channels
         self.encoder_prenet = tf.keras.layers.Embedding(self.text_pipeline.tokenizer.vocab_size,
@@ -589,6 +592,7 @@ class ForwardTransformer(tf.keras.models.Model):
             pitch = self.pitch_pred(x + pitch_emb, training=training, mask=padding_mask)
 
         else:
+            speaker_emb = None
             durations = self.dur_pred(x, training=training, mask=padding_mask)
             pitch = self.pitch_pred(x, training=training, mask=padding_mask)
 
@@ -691,7 +695,7 @@ class ForwardTransformer(tf.keras.models.Model):
             git_hash = subprocess.check_output(['git', 'describe', '--always']).strip().decode()
             self.config.update({'git_hash': git_hash})
         except Exception as e:
-            print(f'WARNING: could not retrieve git hash. {e}')
+            logger.warning(f'could not retrieve git hash. {e}')
         with open(path / 'config.yaml', 'w') as f:
             yaml.dump(dict(self.config), f)  # conversion necessary (is tf wrapper otherwise)
         # only needed when model was loaded from a checkpoint
@@ -709,11 +713,11 @@ class ForwardTransformer(tf.keras.models.Model):
             git_hash = subprocess.check_output(['git', 'describe', '--always']).strip().decode()
             if 'git_hash' in config:
                 if config['git_hash'] != git_hash:
-                    print(f"WARNING: git_hash mismatch: {config['git_hash']}(config) vs {git_hash}(local).")
+                    logger.warning(f"git_hash mismatch: {config['git_hash']}(config) vs {git_hash}(local).")
             else:
-                print(f'WARNING: could not check git hash from config.')
+                logger.warning(f'could not check git hash from config.')
         except Exception as e:
-            print(f'WARNING: could not retrieve git hash. {e}')
+            logger.warning(f'could not retrieve git hash. {e}')
         model.build_model_weights()
         model.load_weights(path / 'model_weights.hdf5')
         return model

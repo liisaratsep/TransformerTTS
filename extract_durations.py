@@ -1,10 +1,14 @@
+import logging
+
 from utils.training_config_manager import TrainingConfigManager, TTSMode
 from utils.argparser import tts_argparser
 
 MODE = TTSMode("extract")
 parser = tts_argparser(MODE)
 args = parser.parse_args()
-config_manager = TrainingConfigManager(mode=MODE, **vars(args))
+config = TrainingConfigManager(mode=MODE, **vars(args))
+
+logger = logging.getLogger(__name__)
 
 if __name__ == '__main__':
     import pickle
@@ -23,42 +27,41 @@ if __name__ == '__main__':
 
     dynamic_memory_allocation()
 
-    if config_manager.seed is not None:
-        np.random.seed(config_manager.seed)
-        tf.random.set_seed(config_manager.seed)
+    if config.seed is not None:
+        np.random.seed(config.seed)
+        tf.random.set_seed(config.seed)
 
     weighted = not args.best
     tag_description = ''.join([
         f'{"_weighted" * weighted}{"_best" * (not weighted)}',
     ])
     writer_tag = f'DurationExtraction{tag_description}'
-    print(writer_tag)
+    logger.info(writer_tag)
 
-    config = config_manager.config
-    config_manager.print_config()
+    config.print_config()
 
     if not args.skip_durations:
-        model = config_manager.load_model(args.autoregressive_weights)
+        model = config.load_model(args.autoregressive_weights)
         if model.r != 1:
-            print(f"ERROR: model's reduction factor is greater than 1, check config. (r={model.r}")
+            logger.info(f"ERROR: model's reduction factor is greater than 1, check config. (r={model.r}")
 
-        data_prep = AlignerPreprocessor.from_config(config=config_manager,
+        data_prep = AlignerPreprocessor.from_config(config=config,
                                                     tokenizer=model.text_pipeline.tokenizer)
-        data_handler = AlignerDataset.from_config(config_manager,
+        data_handler = AlignerDataset.from_config(config,
                                                   preprocessor=data_prep,
                                                   kind='phonemized')
-        target_dir = config_manager.duration_dir
-        config_manager.dump_config()
-        dataset = data_handler.get_dataset(bucket_batch_sizes=config['bucket_batch_sizes'],
-                                           bucket_boundaries=config['bucket_boundaries'],
+        target_dir = config.duration_dir
+        config.dump_config()
+        dataset = data_handler.get_dataset(bucket_batch_sizes=config.config['bucket_batch_sizes'],
+                                           bucket_boundaries=config.config['bucket_boundaries'],
                                            shuffle=False,
                                            drop_remainder=False)
 
         last_layer_key = 'Decoder_LastBlock_CrossAttention'
-        print(f'Extracting attention from layer {last_layer_key}')
+        logger.info(f'Extracting attention from layer {last_layer_key}')
 
-        summary_manager = SummaryManager(model=model, log_dir=config_manager.log_dir / 'Duration Extraction',
-                                         config=config,
+        summary_manager = SummaryManager(model=model, log_dir=config.log_dir / 'Duration Extraction',
+                                         config=config.config,
                                          default_writer='Duration Extraction')
         all_durations = np.array([])
         new_alignments = []
@@ -116,21 +119,21 @@ if __name__ == '__main__':
 
 
         def process_per_char_pitch(sample_name: str):
+            # noinspection PyBroadException
             try:
-                pitch = np.load((config_manager.pitch_dir / sample_name).with_suffix('.npy').as_posix())
-                _durations = np.load((config_manager.duration_dir / sample_name).with_suffix('.npy').as_posix())
-                _mel = np.load((config_manager.mel_dir / sample_name).with_suffix('.npy').as_posix())
+                pitch = np.load((config.pitch_dir / sample_name).with_suffix('.npy').as_posix())
+                _durations = np.load((config.duration_dir / sample_name).with_suffix('.npy').as_posix())
+                _mel = np.load((config.mel_dir / sample_name).with_suffix('.npy').as_posix())
                 char_wise_pitch = _pitch_per_char(pitch, _durations, _mel.shape[0])
-                np.save((config_manager.pitch_per_char / sample_name).with_suffix('.npy').as_posix(), char_wise_pitch)
-            except Exception as e:
-                print(e)
-                print(f"Failed to process {sample_name}")
+                np.save((config.pitch_per_char / sample_name).with_suffix('.npy').as_posix(), char_wise_pitch)
+            except Exception:
+                logger.exception(f"Failed to process {sample_name}")
 
 
-        metadatareader = DataReader.from_config(config_manager, kind='phonemized', scan_wavs=False)
-        pitch_stats = pickle.load(open(config_manager.data_dir / 'pitch_stats.pkl', 'rb'))
-        print(f'\nComputing phoneme-wise pitch')
-        print(f'{len(metadatareader.filenames)} items found in {metadatareader.metadata_path}.')
+        metadatareader = DataReader.from_config(config, kind='phonemized', scan_wavs=False)
+        pitch_stats = pickle.load(open(config.data_dir / 'pitch_stats.pkl', 'rb'))
+        logger.info(f'\nComputing phoneme-wise pitch')
+        logger.info(f'{len(metadatareader.filenames)} items found in {metadatareader.metadata_path}.')
         wav_iter = p_umap(process_per_char_pitch, metadatareader.filenames)
 
-    print('Done.')
+    logger.info('Done.')

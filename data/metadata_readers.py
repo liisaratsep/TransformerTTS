@@ -1,13 +1,8 @@
-"""
-    methods for reading a dataset and return a dictionary of the form:
-    {
-      filename: text_line,
-      ...
-    }
-"""
-
 import sys
+import logging
 from typing import Dict, List, Tuple
+
+logger = logging.getLogger(__name__)
 
 
 def get_preprocessor_by_name(name: str):
@@ -59,9 +54,9 @@ if __name__ == '__main__':
     metadata_path = '/Volumes/data/datasets/LJSpeech-1.1/metadata.csv'
     d = get_preprocessor_by_name('ljspeech')(metadata_path)
     key_list = list(d.keys())
-    print('metadata head')
+    logger.info('metadata head')
     for key in key_list[:5]:
-        print(f'{key}: {d[key]}')
-    print('metadata tail')
+        logger.info(f'{key}: {d[key]}')
+    logger.info('metadata tail')
     for key in key_list[-5:]:
-        print(f'{key}: {d[key]}')
+        logger.info(f'{key}: {d[key]}')

@@ -1,3 +1,4 @@
+import logging
 import subprocess
 import shutil
 from pathlib import Path
@@ -6,6 +7,8 @@ from typing import Optional
 
 import numpy as np
 import ruamel.yaml
+
+logger = logging.getLogger(__name__)
 
 
 class TTSMode(str, Enum):
@@ -88,21 +91,21 @@ class TrainingConfigManager:
         try:
             return subprocess.check_output(['git', 'describe', '--always']).strip().decode()
         except Exception as e:
-            print(f'WARNING: could not retrieve git hash. {e}')
+            logger.warning(f'could not retrieve git hash. {e}')
 
     def _check_hash(self):
         try:
             git_hash = subprocess.check_output(['git', 'describe', '--always']).strip().decode()
             if self.config['git_hash'] != git_hash:
-                print(
-                    f"WARNING: git hash mismatch. Current: {git_hash}. Training config hash: {self.config['git_hash']}")
+                logger.warning(
+                    f"git hash mismatch. Current: {git_hash}. Training config hash: {self.config['git_hash']}")
         except Exception as e:
-            print(f'WARNING: could not check git hash. {e}')
+            logger.warning(f'could not check git hash. {e}')
 
     @staticmethod
     def _print_dict_values(values, key_name, level=0, tab_size=2):
         tab = level * tab_size * ' '
-        print(tab + '-', key_name, ':', values)
+        logger.info(tab + '-', key_name, ':', values)
 
     def _print_dictionary(self, dictionary, recursion_level=0):
         for key in dictionary.keys():
@@ -113,7 +116,7 @@ class TrainingConfigManager:
                 self._print_dict_values(dictionary[key], key_name=key, level=recursion_level)
 
     def print_config(self):
-        print('\nCONFIGURATION', self.model_kind)
+        logger.info('\nCONFIGURATION', self.model_kind)
         self._print_dictionary(self.config)
 
     def update_config(self):
@@ -178,16 +181,16 @@ class TrainingConfigManager:
         if checkpoint_path:
             ckpt.restore(checkpoint_path)
             if verbose:
-                print(f'restored weights from {checkpoint_path} at step {model.step}')
+                logger.info(f'restored weights from {checkpoint_path} at step {model.step}')
         else:
             manager = tf.train.CheckpointManager(ckpt, self.weights_dir / "latest",
                                                  max_to_keep=None)
             if manager.latest_checkpoint is None:
-                print(f'WARNING: could not find weights file. Trying to load from \n {manager.directory}')
-                print('Edit config to point at the right log directory.')
+                logger.warning(f'could not find weights file. Trying to load from \n {manager.directory}. '
+                               f'Edit config to point at the right log directory.')
             ckpt.restore(manager.latest_checkpoint)
             if verbose:
-                print(f'restored weights from {manager.latest_checkpoint} at step {model.step}')
+                logger.info(f'restored weights from {manager.latest_checkpoint} at step {model.step}')
         if self.model_kind == 'aligner':
             reduction_factor = reduction_schedule(model.step, self.config['reduction_factor_schedule'])
             model.set_constants(reduction_factor=reduction_factor)

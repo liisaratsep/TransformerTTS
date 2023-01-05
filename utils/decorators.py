@@ -1,15 +1,17 @@
-import traceback
+import logging
 from time import time
+
+logger = logging.getLogger(__name__)
 
 
 def ignore_exception(f):
     def apply_func(*args, **kwargs):
+        # noinspection PyBroadException
         try:
             result = f(*args, **kwargs)
             return result
         except Exception:
-            print(f'Catched exception in {f}:')
-            traceback.print_exc()
+            logger.exception(f'Caught exception in {f}')
             return None
 
     return apply_func

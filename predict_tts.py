@@ -1,10 +1,14 @@
+import logging
+
 from utils.training_config_manager import TrainingConfigManager, TTSMode
 from utils.argparser import tts_argparser
 
 MODE = TTSMode("predict")
-
 parser = tts_argparser(MODE)
 args = parser.parse_args()
+config = TrainingConfigManager(mode=MODE, **vars(args))
+
+logger = logging.getLogger(__name__)
 
 if __name__ == '__main__':
     from pathlib import Path
@@ -25,19 +29,18 @@ if __name__ == '__main__':
         text = [args.text]
         fname = 'custom_text'
     else:
-        print(f'Specify either an input text (-t "some text") or a text input file (-f /path/to/file.txt)')
+        logger.error(f'Specify either an input text (-t "some text") or a text input file (-f /path/to/file.txt)')
         exit()
 
     # load the appropriate model
     outdir = Path(args.outdir) if args.outdir is not None else Path('.')
 
     if args.path is not None:
-        print(f'Loading model from {args.path}')
+        logger.info(f'Loading model from {args.path}')
         model = ForwardTransformer.load_model(args.path)
     else:
-        print(f'Trying to load the latest checkpoint from model from {args.save_directory}')
-        config_manager = TrainingConfigManager(mode=MODE, **vars(args))
-        model = config_manager.load_model()
+        logger.info(f'Trying to load the latest checkpoint from model from {args.save_directory}')
+        model = config.load_model()
 
     file_name = f"{fname}_{model.config['step']}"
     outdir = outdir / 'outputs' / f'{fname}'
@@ -45,15 +48,15 @@ if __name__ == '__main__':
     output_path = (outdir / file_name).with_suffix('.wav')
 
     audio = Audio.from_config(model.config)
-    print(f'Output wav under {output_path.parent}')
+    logger.info(f'Output wav under {output_path.parent}')
     wavs = []
     for i, text_line in enumerate(text):
         phons = model.text_pipeline.phonemizer(text_line)
         tokens = model.text_pipeline.tokenizer(phons, args.speaker_id)
         if args.verbose:
-            print(f'Predicting {text_line}')
-            print(f'Phonemes: "{phons}"')
-            print(f'Tokens: "{tokens}"')
+            logger.info(f'Predicting {text_line}')
+            logger.info(f'Phonemes: "{phons}"')
+            logger.info(f'Tokens: "{tokens}"')
         out = model.predict(tokens, speaker_id=args.speaker_id, encode=False, phoneme_max_duration=None)
         mel = out['mel'].numpy().T
         wav = audio.reconstruct_waveform(mel)
