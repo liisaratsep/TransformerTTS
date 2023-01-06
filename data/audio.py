@@ -11,7 +11,7 @@ from scipy.ndimage import binary_dilation
 import pyworld as pw
 
 
-class Audio():
+class Audio:
     def __init__(self,
                  sampling_rate: int,
                  n_fft: int,
@@ -22,7 +22,7 @@ class Audio():
                  f_max: int,
                  normalizer: str,
                  norm_wav: bool = None,
-                 target_dBFS: int = None,
+                 target_dbfs: int = None,
                  int16_max: int = None,
                  trim_long_silences: bool = None,
                  trim_silence: bool = None,
@@ -42,7 +42,7 @@ class Audio():
         self.f_min = f_min
         self.f_max = f_max
         self.norm_wav = norm_wav
-        self.target_dBFS = target_dBFS
+        self.target_dbfs = target_dbfs
         self.int16_max = int16_max
         self.trim_long_silences = trim_long_silences
         self.trim_silence = trim_silence
@@ -53,21 +53,22 @@ class Audio():
         self.vad_max_silence_length = vad_max_silence_length
         self.normalizer = getattr(sys.modules[__name__], normalizer)()
 
-    def _make_config(self, locals) -> dict:
+    @staticmethod
+    def _make_config(_locals) -> dict:
         config = {}
-        for k in locals:
+        for k in _locals:
             if (k != 'self') and (k != '__class__'):
-                if isinstance(locals[k], dict):
-                    config.update(locals[k])
+                if isinstance(_locals[k], dict):
+                    config.update(_locals[k])
                 else:
-                    config.update({k: locals[k]})
+                    config.update({k: _locals[k]})
         return dict(config)
 
-    def _normalize(self, S):
-        return self.normalizer.normalize(S)
+    def _normalize(self, s):
+        return self.normalizer.normalize(s)
 
-    def _denormalize(self, S):
-        return self.normalizer.denormalize(S)
+    def _denormalize(self, s):
+        return self.normalizer.denormalize(s)
 
     def _linear_to_mel(self, spectrogram):
         return librosa.feature.melspectrogram(
@@ -87,15 +88,15 @@ class Audio():
 
     def mel_spectrogram(self, wav):
         """ This is what the model is trained to reproduce. """
-        D = self._stft(wav)
-        S = self._linear_to_mel(np.abs(D))
-        return self._normalize(S).T
+        d = self._stft(wav)
+        s = self._linear_to_mel(np.abs(d))
+        return self._normalize(s).T
 
     def reconstruct_waveform(self, mel, n_iter=32):
         """ Uses Griffin-Lim phase reconstruction to convert from a normalized
         mel spectrogram back into a waveform. """
         amp_mel = self._denormalize(mel)
-        S = librosa.feature.inverse.mel_to_stft(
+        s = librosa.feature.inverse.mel_to_stft(
             amp_mel,
             power=1,
             sr=self.sampling_rate,
@@ -103,7 +104,7 @@ class Audio():
             fmin=self.f_min,
             fmax=self.f_max)
         wav = librosa.core.griffinlim(
-            S,
+            s,
             n_iter=n_iter,
             hop_length=self.hop_length,
             win_length=self.win_length)
@@ -155,11 +156,11 @@ class Audio():
         if increase_only and decrease_only:
             raise ValueError("Both increase only and decrease only are set")
         rms = np.sqrt(np.mean((wav * self.int16_max) ** 2))
-        wave_dBFS = 20 * np.log10(rms / self.int16_max)
-        dBFS_change = self.target_dBFS - wave_dBFS
-        if dBFS_change < 0 and increase_only or dBFS_change > 0 and decrease_only:
+        wave_dbfs = 20 * np.log10(rms / self.int16_max)
+        dbfs_change = self.target_dbfs - wave_dbfs
+        if dbfs_change < 0 and increase_only or dbfs_change > 0 and decrease_only:
             return wav
-        return wav * (10 ** (dBFS_change / 20))
+        return wav * (10 ** (dbfs_change / 20))
 
     def trim_audio_silence(self, wav):
         trimmed = librosa.effects.trim(wav,
@@ -199,10 +200,10 @@ class Audio():
 
 
 class Normalizer:
-    def normalize(self, S):
+    def normalize(self, s):
         raise NotImplementedError
 
-    def denormalize(self, S):
+    def denormalize(self, s):
         raise NotImplementedError
 
 
@@ -211,12 +212,12 @@ class MelGAN(Normalizer):
         super().__init__()
         self.clip_min = 1.0e-5
 
-    def normalize(self, S):
-        S = np.clip(S, a_min=self.clip_min, a_max=None)
-        return np.log(S)
+    def normalize(self, s):
+        s = np.clip(s, a_min=self.clip_min, a_max=None)
+        return np.log(s)
 
-    def denormalize(self, S):
-        return np.exp(S)
+    def denormalize(self, s):
+        return np.exp(s)
 
 
 class WaveRNN(Normalizer):
@@ -225,18 +226,20 @@ class WaveRNN(Normalizer):
         self.min_level_db = - 100
         self.max_norm = 4
 
-    def normalize(self, S):
-        S = self.amp_to_db(S)
-        S = np.clip((S - self.min_level_db) / -self.min_level_db, 0, 1)
-        return (S * 2 * self.max_norm) - self.max_norm
+    def normalize(self, s):
+        s = self.amp_to_db(s)
+        s = np.clip((s - self.min_level_db) / -self.min_level_db, 0, 1)
+        return (s * 2 * self.max_norm) - self.max_norm
 
-    def denormalize(self, S):
-        S = (S + self.max_norm) / (2 * self.max_norm)
-        S = (np.clip(S, 0, 1) * -self.min_level_db) + self.min_level_db
-        return self.db_to_amp(S)
+    def denormalize(self, s):
+        s = (s + self.max_norm) / (2 * self.max_norm)
+        s = (np.clip(s, 0, 1) * -self.min_level_db) + self.min_level_db
+        return self.db_to_amp(s)
 
-    def amp_to_db(self, x):
+    @staticmethod
+    def amp_to_db(x):
         return 20 * np.log10(np.maximum(1e-5, x))
 
-    def db_to_amp(self, x):
+    @staticmethod
+    def db_to_amp(x):
         return np.power(10.0, x * 0.05)

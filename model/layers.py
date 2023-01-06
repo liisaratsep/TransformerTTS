@@ -34,7 +34,7 @@ class CNNResNorm(tf.keras.layers.Layer):
             x = self.inner_activations[i](x)
         return x
 
-    def call(self, inputs, training):
+    def call(self, inputs, training=None, **_):
         x = self.call_convs(inputs)
         x = self.last_conv(x)
         x = self.dropout(x, training=training)
@@ -71,7 +71,7 @@ class TransposedCNNResNorm(tf.keras.layers.Layer):
             x = self.inner_activations[i](x)
         return x
 
-    def call(self, inputs, training):
+    def call(self, inputs, training=None, **_):
         x = tf.transpose(inputs, (0, 1, 2))
         x = self.call_convs(x)
         x = self.last_conv(x)
@@ -96,7 +96,7 @@ class FFNResNorm(tf.keras.layers.Layer):
         self.dropout = tf.keras.layers.Dropout(dropout_rate)
         self.last_ln = tf.keras.layers.LayerNormalization(epsilon=1e-6)
 
-    def call(self, x, training):
+    def call(self, x, training=None, **kwargs):
         ffn_out = self.d1(x)
         ffn_out = self.d2(ffn_out)  # (batch_size, input_seq_len, model_dim)
         ffn_out = self.dropout(ffn_out, training=training)
@@ -129,7 +129,7 @@ class MultiHeadAttention(tf.keras.layers.Layer):
         x = tf.reshape(x, (batch_size, -1, self.num_heads, self.depth))
         return tf.transpose(x, perm=[0, 2, 1, 3])
 
-    def call(self, v, k, q_in, mask, training):
+    def call(self, v=None, k=None, q_in=None, mask=None, training=None):
         batch_size = tf.shape(q_in)[0]
 
         q = self.wq(q_in)  # (batch_size, seq_len, model_dim)
@@ -160,11 +160,13 @@ class ScaledDotProductAttention(tf.keras.layers.Layer):
         but it must be broadcastable for addition.
 
         Args:
-            q: query shape == (..., seq_len_q, depth)
-            k: key shape == (..., seq_len_k, depth)
-            v: value shape == (..., seq_len_v, depth_v)
-            mask: Float tensor with shape broadcastable
-                  to (..., seq_len_q, seq_len_k). Defaults to None.
+            inputs = (q, k, v, mask)
+
+        q: query shape == (..., seq_len_q, depth)
+        k: key shape == (..., seq_len_k, depth)
+        v: value shape == (..., seq_len_v, depth_v)
+        mask: Float tensor with shape broadcastable
+              to (..., seq_len_q, seq_len_k). Defaults to None.
 
         Returns:
             output, attention_weights
@@ -174,7 +176,7 @@ class ScaledDotProductAttention(tf.keras.layers.Layer):
         super(ScaledDotProductAttention, self).__init__()
         self.dropout = tf.keras.layers.Dropout(rate=dropout)
 
-    def call(self, inputs, training=False):
+    def call(self, inputs, training=None, **_):
         q, k, v, mask = inputs
 
         matmul_qk = tf.matmul(q, k, transpose_b=True)  # (..., seq_len_q, seq_len_k)
@@ -207,7 +209,7 @@ class SelfAttentionResNorm(tf.keras.layers.Layer):
         self.mha = MultiHeadAttention(model_dim, num_heads, dropout=dropout_rate)
         self.last_ln = tf.keras.layers.LayerNormalization(epsilon=1e-6)
 
-    def call(self, x, training, mask):
+    def call(self, x, training=None, mask=None, **_):
         attn_out, attn_weights = self.mha(x, x, x, mask, training=training)  # (batch_size, input_seq_len, model_dim)
         return self.last_ln(attn_out + x), attn_weights
 
@@ -224,7 +226,7 @@ class SelfAttentionDenseBlock(tf.keras.layers.Layer):
         self.sarn = SelfAttentionResNorm(model_dim, num_heads, dropout_rate=dropout_rate)
         self.ffn = FFNResNorm(model_dim, dense_hidden_units, dropout_rate=dropout_rate)
 
-    def call(self, x, training, mask):
+    def call(self, x, training=None, mask=None):
         attn_out, attn_weights = self.sarn(x, mask=mask, training=training)
         dense_mask = 1. - tf.squeeze(mask, axis=(1, 2))[:, :, None]
         attn_out = attn_out * dense_mask
@@ -257,7 +259,7 @@ class SelfAttentionConvBlock(tf.keras.layers.Layer):
                                    dout_rate=dropout_rate,
                                    padding='same')
 
-    def call(self, x, training, mask):
+    def call(self, x, training=None, mask=None):
         attn_out, attn_weights = self.sarn(x, mask=mask, training=training)
         conv_mask = 1. - tf.squeeze(mask, axis=(1, 2))[:, :, None]
         attn_out = attn_out * conv_mask
@@ -298,7 +300,7 @@ class SelfAttentionBlocks(tf.keras.layers.Layer):
         self.use_layernorm = use_layernorm
         self.layernorm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
 
-    def call(self, inputs, training, padding_mask, reduction_factor=1):
+    def call(self, inputs, training=None, padding_mask=None, reduction_factor=1):
         seq_len = tf.shape(inputs)[1]
         if self.use_layernorm:
             x = self.layernorm(inputs)
@@ -328,7 +330,7 @@ class CrossAttentionResnorm(tf.keras.layers.Layer):
         self.mha = MultiHeadAttention(model_dim, num_heads, dropout=dropout_rate)
         self.layernorm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
 
-    def call(self, q, k, v, training, mask):
+    def call(self, q=None, k=None, v=None, training=None, mask=None):
         attn_values, attn_weights = self.mha(v, k=k, q_in=q, mask=mask, training=training)
         out = self.layernorm(attn_values + q)
         return out, attn_weights
@@ -347,7 +349,7 @@ class CrossAttentionDenseBlock(tf.keras.layers.Layer):
         self.carn = CrossAttentionResnorm(model_dim, num_heads, dropout_rate=dropout_rate)
         self.ffn = FFNResNorm(model_dim, dense_hidden_units, dropout_rate=dropout_rate)
 
-    def call(self, x, enc_output, training, look_ahead_mask, padding_mask):
+    def call(self, x, enc_output=None, training=None, look_ahead_mask=None, padding_mask=None):
         attn1, attn_weights_block1 = self.sarn(x, mask=look_ahead_mask, training=training)
 
         attn2, attn_weights_block2 = self.carn(attn1, v=enc_output, k=enc_output,
@@ -380,7 +382,7 @@ class CrossAttentionBlocks(tf.keras.layers.Layer):
                                                   name=f'{self.name}_CADB_last')
         self.layernorm = tf.keras.layers.LayerNormalization(epsilon=1e-6)
 
-    def call(self, inputs, enc_output, training, decoder_padding_mask, encoder_padding_mask,
+    def call(self, inputs, enc_output=None, training=None, decoder_padding_mask=None, encoder_padding_mask=None,
              reduction_factor=1):
         seq_len = tf.shape(inputs)[1]
         x = self.layernorm(inputs)
@@ -410,7 +412,7 @@ class DecoderPrenet(tf.keras.layers.Layer):
         self.dropout_1 = tf.keras.layers.Dropout(self.rate)
         self.dropout_2 = tf.keras.layers.Dropout(self.rate)
 
-    def call(self, x, training):
+    def call(self, x, training=None, **kwargs):
         self.dropout_1.rate = self.rate
         self.dropout_2.rate = self.rate
         x = self.d1(x)
@@ -429,7 +431,7 @@ class Postnet(tf.keras.layers.Layer):
         self.stop_linear = tf.keras.layers.Dense(3)
         self.mel_out = tf.keras.layers.Dense(mel_channels)
 
-    def call(self, x):
+    def call(self, x, **_):
         stop = self.stop_linear(x)
         mel = self.mel_out(x)
         return {
@@ -456,7 +458,7 @@ class StatPredictor(tf.keras.layers.Layer):
                                       dout_rate=dropout_rate)
         self.linear = tf.keras.layers.Dense(1, activation=dense_activation)
 
-    def call(self, x, training, mask):
+    def call(self, x, training=None, mask=None):
         x = x * mask
         x = self.conv_blocks(x, training=training)
         x = self.linear(x)
@@ -493,7 +495,7 @@ class CNNDropout(tf.keras.layers.Layer):
             x = self.dropouts[i](x, training=training)
         return x
 
-    def call(self, inputs, training):
+    def call(self, inputs, training=None, **_):
         x = self.call_convs(inputs, training=training)
         x = self.last_conv(x)
         x = self.last_activation(x)
@@ -524,7 +526,7 @@ class Expand(tf.keras.layers.Layer):
         super(Expand, self).__init__(**kwargs)
         self.model_dimension = model_dim
 
-    def call(self, x, dimensions):
+    def call(self, x, dimensions=None, **_):
         dimensions = tf.squeeze(dimensions, axis=-1)
         dimensions = tf.cast(tf.math.round(dimensions), tf.int32)
         seq_len = tf.shape(x)[1]

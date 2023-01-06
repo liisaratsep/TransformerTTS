@@ -16,7 +16,7 @@ if __name__ == '__main__':
     import numpy as np
 
     from data.audio import Audio
-    from model.models import ForwardTransformer
+    from model import ForwardTransformer
 
     fname = None
     text = None

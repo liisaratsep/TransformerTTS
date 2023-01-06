@@ -51,6 +51,7 @@ class DataReader:
         reader = get_preprocessor_by_name('post_processed_reader')
         training = False
         is_processed = True
+        metadata = None
         if kind == 'train':
             metadata = config_manager.train_metadata_path
             training = True
@@ -92,7 +93,8 @@ class AlignerPreprocessor:
         stop_probs[-1] = 2
         return norm_mel, encoded_phonemes, stop_probs, sample_name
 
-    def get_sample_length(self, norm_mel, encoded_phonemes, stop_probs, sample_name):
+    @staticmethod
+    def get_sample_length(norm_mel, *_):
         return tf.shape(norm_mel)[0]
 
     @classmethod

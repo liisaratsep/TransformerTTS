@@ -12,7 +12,7 @@ def buffer_image(figure):
     return buf
 
 
-def plot1D(y, figsize=None, title='', x=None):
+def plot_1d(y, figsize=None, title='', x=None):
     f = plt.figure(figsize=figsize)
     if x is None:
         x = np.arange(len(y))

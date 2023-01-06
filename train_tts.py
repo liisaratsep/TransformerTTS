@@ -81,9 +81,10 @@ if __name__ == '__main__':
         _summary_manager.display_attention_heads(model_out, tag='ValidationAttentionHeads')
         _summary_manager.add_histogram(tag=f'Validation/Predicted durations', values=model_out['duration'])
         _summary_manager.add_histogram(tag=f'Validation/Target durations', values=_durations)
-        _summary_manager.display_plot1D(tag=f'Validation/{_fname[0].numpy().decode("utf-8")} predicted pitch',
-                                        y=model_out['pitch'][0])
-        _summary_manager.display_plot1D(tag=f'Validation/{_fname[0].numpy().decode("utf-8")} target pitch', y=_pitch[0])
+        _summary_manager.display_plot_1d(tag=f'Validation/{_fname[0].numpy().decode("utf-8")} predicted pitch',
+                                         y=model_out['pitch'][0])
+        _summary_manager.display_plot_1d(tag=f'Validation/{_fname[0].numpy().decode("utf-8")} target pitch',
+                                         y=_pitch[0])
         _summary_manager.display_mel(mel=model_out['mel'][0],
                                      tag=f'Validation/{_fname[0].numpy().decode("utf-8")} predicted_mel')
         _summary_manager.display_mel(mel=_mel[0], tag=f'Validation/{_fname[0].numpy().decode("utf-8")} target_mel')
@@ -198,8 +199,8 @@ if __name__ == '__main__':
             summary_manager.display_attention_heads(output, tag='TrainAttentionHeads')
             summary_manager.display_mel(mel=output['mel'][0], tag=f'Train/predicted_mel')
             summary_manager.display_mel(mel=mel[0], tag=f'Train/target_mel')
-            summary_manager.display_plot1D(tag=f'Train/Predicted pitch', y=output['pitch'][0])
-            summary_manager.display_plot1D(tag=f'Train/Target pitch', y=pitch[0])
+            summary_manager.display_plot_1d(tag=f'Train/Predicted pitch', y=output['pitch'][0])
+            summary_manager.display_plot_1d(tag=f'Train/Target pitch', y=pitch[0])
 
         if model.step % 1000 == 0:
             save_path = manager_training.save()

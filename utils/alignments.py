@@ -3,11 +3,12 @@ import tensorflow as tf
 from utils.metrics import attention_score
 from utils.spectrogram_ops import mel_lengths, phoneme_lengths
 
-logger = tf.get_logger()
-logger.setLevel('ERROR')
 import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse.csgraph import dijkstra
+
+logger = tf.get_logger()
+logger.setLevel('ERROR')
 
 
 def to_node_index(i, j, cols):
@@ -64,8 +65,8 @@ def extract_durations_with_dijkstra(attention_map: np.array) -> np.array:
     attn_max = np.max(attention_map)
     path_probs = attn_max - attention_map
     adj_matrix = to_adj_matrix(path_probs)
-    dist_matrix, predecessors = dijkstra(csgraph=adj_matrix, directed=True,
-                                         indices=0, return_predecessors=True)
+    dist_matrix, predecessors, _ = dijkstra(csgraph=adj_matrix, directed=True,
+                                            indices=0, return_predecessors=True)
     path = []
     pr_index = predecessors[-1]
     while pr_index != 0:
@@ -99,7 +100,7 @@ def duration_to_alignment_matrix(durations):
     return np.array(alignments)
 
 
-def get_durations_from_alignment(batch_alignments, mels, phonemes, weighted=False, zfill = 0):
+def get_durations_from_alignment(batch_alignments, mels, phonemes, weighted=False, zfill=0):
     """
 
     :param batch_alignments: attention weights from autoregressive model.
@@ -109,7 +110,8 @@ def get_durations_from_alignment(batch_alignments, mels, phonemes, weighted=Fals
     :param zfill: number of characters used for GST tokens
     :return:
     """
-    # mel_len - 1 because we remove last timestep, which is end_vector. start vector is not predicted (or removed from GTA)
+    # mel_len - 1 because we remove last timestep, which is end_vector.
+    # start vector is not predicted (or removed from GTA)
     mel_len = mel_lengths(mels, padding_value=0.) - 1  # [N]
     # phonemes contain start and end tokens (start will be removed later) and GST models include GST tokens
     phon_len = phoneme_lengths(phonemes) - 1 - zfill
@@ -120,7 +122,7 @@ def get_durations_from_alignment(batch_alignments, mels, phonemes, weighted=Fals
     for batch_num, al in enumerate(batch_alignments):
         unpad_mel_len = mel_len[batch_num]
         unpad_phon_len = phon_len[batch_num]
-        unpad_alignments = al[:, 1:unpad_mel_len, 1+zfill:unpad_phon_len]  # first dim is heads
+        unpad_alignments = al[:, 1:unpad_mel_len, 1 + zfill:unpad_phon_len]  # first dim is heads
         scored_attention = unpad_alignments * attn_scores[batch_num][:, None, None]
 
         if weighted:

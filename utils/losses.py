@@ -7,7 +7,7 @@ def new_scaled_crossentropy(index=2, scaling=1.0):
     Scales the loss for given stop_index by stop_scaling
     """
 
-    def masked_crossentropy(targets: tf.Tensor, logits: tf.Tensor) -> tf.Tensor:
+    def _masked_crossentropy(targets: tf.Tensor, logits: tf.Tensor) -> tf.Tensor:
         crossentropy = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
         padding_mask = tf.math.equal(targets, 0)
         padding_mask = tf.math.logical_not(padding_mask)
@@ -18,7 +18,7 @@ def new_scaled_crossentropy(index=2, scaling=1.0):
         loss = crossentropy(targets, logits, sample_weight=combined_mask)
         return loss
 
-    return masked_crossentropy
+    return _masked_crossentropy
 
 
 def masked_crossentropy(targets: tf.Tensor, logits: tf.Tensor) -> tf.Tensor:
@@ -51,8 +51,8 @@ def masked_mean_absolute_error(targets: tf.Tensor, logits: tf.Tensor, mask_value
 
 def masked_binary_crossentropy(targets: tf.Tensor, logits: tf.Tensor, mask_value=-1) -> tf.Tensor:
     bc = tf.keras.losses.BinaryCrossentropy(reduction='none')
-    mask = tf.math.logical_not(tf.math.equal(logits,
-                                             mask_value))  # TODO: masking based on the logits requires a masking layer. But masking layer produces 0. as outputs.
+    # TODO: masking based on the logits requires a masking layer. But masking layer produces 0. as outputs.
+    mask = tf.math.logical_not(tf.math.equal(logits, mask_value))
     # Need explicit masking
     mask = tf.cast(mask, dtype=tf.int32)
     loss_ = bc(targets, logits)

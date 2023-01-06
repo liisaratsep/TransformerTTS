@@ -43,7 +43,7 @@ if __name__ == '__main__':
     if not args.skip_durations:
         model = config.load_model(args.autoregressive_weights)
         if model.r != 1:
-            logger.info(f"ERROR: model's reduction factor is greater than 1, check config. (r={model.r}")
+            logger.error(f"model's reduction factor is greater than 1, check config. (r={model.r}")
 
         data_prep = AlignerPreprocessor.from_config(config=config,
                                                     tokenizer=model.text_pipeline.tokenizer)

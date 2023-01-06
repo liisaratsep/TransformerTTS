@@ -4,7 +4,7 @@ from typing import Optional
 import tensorflow as tf
 
 from data.audio import Audio
-from utils.display import tight_grid, buffer_image, plot_image, plot1D
+from utils.display import tight_grid, buffer_image, plot_image, plot_1d
 from utils.vec_ops import norm_tensor
 from utils.decorators import ignore_exception
 
@@ -47,10 +47,10 @@ class SummaryManager:
         self.add_writer(tag=default_writer, path=self.log_dir, default=True)
 
     def add_writer(self, path, tag=None, default=False):
-        """ Adds a writer to self.writers if the writer does not exist already.
+        """ Adds a writer if the writer does not exist already.
             To avoid spamming writers on disk.
             
-            :returns the writer on path with tag tag or path
+            returns the writer on path with tag or path
         """
         if not tag:
             tag = path
@@ -171,17 +171,17 @@ class SummaryManager:
         self.add_image(tag=tag, image=image, step=step)
 
     @ignore_exception
-    def display_plot1D(self, y, x=None, figsize=None, tag='', step=None):
+    def display_plot_1d(self, y, x=None, figsize=None, tag='', step=None):
         if step is None:
             step = self.global_step
-        buf = plot1D(y, x=x, figsize=figsize)
+        buf = plot_1d(y, x=x, figsize=figsize)
         image = tf.image.decode_png(buf.getvalue(), channels=4)
         image = tf.expand_dims(image, 0)
         self.add_image(tag=tag, image=image, step=step)
 
     @control_frequency
     @ignore_exception
-    def display_loss(self, output, tag='', plot_all=False, step=None):
+    def display_loss(self, output, tag='', step=None, **_):
         if step is None:
             step = self.global_step
         self.add_scalars(tag=f'{tag}/losses', dictionary=output['losses'], step=step)
@@ -189,7 +189,7 @@ class SummaryManager:
 
     @control_frequency
     @ignore_exception
-    def display_scalar(self, tag, scalar_value, plot_all=False, step=None):
+    def display_scalar(self, tag, scalar_value, step=None, **_):
         if step is None:
             step = self.global_step
         self.add_scalar(tag=tag, scalar_value=scalar_value, step=step)

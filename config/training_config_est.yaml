@@ -38,7 +38,7 @@ audio_settings:
 
   # Wav normalization
   norm_wav: True
-  target_dBFS: -30
+  target_dbfs: -30
   int16_max: 32767
 
 text_settings:

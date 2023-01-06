@@ -75,15 +75,18 @@ class TrainingConfigManager:
 
     def _load_config(self, config_path):
         config_path = Path(config_path)
-        all_config = {}
         with open(str(config_path), 'rb') as session_yaml:
             session_config = self.yaml.load(session_yaml)
+
         if 'automatic' in session_config and session_config['automatic']:
+            session_config = {k.lower(): v for k, v in session_config.items()}
             return session_config
         else:
+            all_config = {}
             for key in ['dataset', 'training_data_settings', 'audio_settings', 'text_settings',
                         f'{self.model_kind}_settings']:
-                all_config.update(session_config[key])
+                subconfig = {k.lower(): v for k, v in session_config[key].items()}
+                all_config.update(subconfig)
             return all_config
 
     @staticmethod
@@ -124,7 +127,7 @@ class TrainingConfigManager:
         self.config['automatic'] = True
 
     def get_model(self):
-        from model.models import Aligner, ForwardTransformer
+        from model import Aligner, ForwardTransformer
         if self.git_hash:
             self._check_hash()
         if self.model_kind == 'aligner':
