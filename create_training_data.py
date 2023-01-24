@@ -9,6 +9,7 @@ args = parser.parse_args()
 config = TrainingConfigManager(mode=MODE, **vars(args))
 
 logger = logging.getLogger(__name__)
+logger.setLevel(args.log_level)
 
 for arg in vars(args):
     logger.info('{}: {}'.format(arg, getattr(args, arg)))

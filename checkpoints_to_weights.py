@@ -8,6 +8,7 @@ args = parser.parse_args()
 config = TrainingConfigManager(mode=MODE, **vars(args))
 
 logger = logging.getLogger(__name__)
+logger.setLevel(args.log_level)
 
 if __name__ == '__main__':
     model = config.load_model(checkpoint_path=args.checkpoint_path)  # None defaults to latest

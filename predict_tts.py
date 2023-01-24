@@ -9,6 +9,7 @@ args = parser.parse_args()
 config = TrainingConfigManager(mode=MODE, **vars(args))
 
 logger = logging.getLogger(__name__)
+logger.setLevel(args.log_level)
 
 if __name__ == '__main__':
     from pathlib import Path

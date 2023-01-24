@@ -9,6 +9,7 @@ def tts_argparser(mode: TTSMode):
                         help="Path to the configuration file, "
                              "defaults to the automatically saved config file in the model's directory.")
     parser.add_argument('--seed', type=int, help="The seed value for model initialization and data shuffling.")
+    parser.add_argument('--log-level', type=str, help="Script logger level", default="INFO")
     parser.add_argument('--save-directory', type=str, default="",
                         help="Directory for training metadata, models and logs. Will be created if it doesn't exist.")
 
@@ -28,10 +29,10 @@ def tts_argparser(mode: TTSMode):
                                       help='Use best head instead of weighted average of heads.')
         extraction_group.add_argument('--autoregressive_weights', type=str,
                                       help='Explicit path to autoregressive model weights.')
-        extraction_group.add_argument('--skip_durations', dest='skip_durations', action='store_true',
+        extraction_group.add_argument('--skip-durations', dest='skip_durations', action='store_true',
                                       help="Skip character duration calculation, use this if you are using a different "
                                            "alignment model.")
-        extraction_group.add_argument('--skip_char_pitch', dest='skip_char_pitch', action='store_true',
+        extraction_group.add_argument('--skip-char-pitch', dest='skip_char_pitch', action='store_true',
                                       help="Skip character pitch calculation.")
 
     if mode not in [TTSMode.PREDICT, TTSMode.WEIGHTS]:
@@ -44,7 +45,9 @@ def tts_argparser(mode: TTSMode):
     if mode in [TTSMode.ALIGNER, TTSMode.TTS]:
         training_group = parser.add_argument_group("Options for training")
         training_group.add_argument('--test-files', nargs='+',
-                                    default=[f"test_files/{'aligner_' if TTSMode.ALIGNER else ''}test_sentences.txt"],
+                                    default=[
+                                        f"test_files/{'aligner_' if mode == TTSMode.ALIGNER else ''}test_sentences.txt"
+                                    ],
                                     help="A list of text files with one sentence per line to generate test samples. "
                                          "Predictions are stored in tensorboard logs.")
 
