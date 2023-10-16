@@ -53,12 +53,16 @@ class ForwardTransformer(tf.keras.models.Model):
                  use_layernorm: bool = False,
                  multispeaker: Optional[str] = None,
                  n_speakers: int = 1,
+                 n_languages: int = 1,
+                 n_styles: int = 1,
                  debug=False,
                  **kwargs):
         super(ForwardTransformer, self).__init__()
         self.config = self._make_config(locals(), kwargs)
         self.multispeaker = Multispeaker(multispeaker) if multispeaker is not None else None
         self.n_speakers = n_speakers
+        self.n_languages = n_languages
+        self.n_styles = n_styles
         self.text_pipeline = TextToTokens.default(phoneme_language,
                                                   add_start_end=False,
                                                   with_stress=with_stress,
@@ -90,6 +94,20 @@ class ForwardTransformer(tf.keras.models.Model):
                                                               name='speaker_embedder')
         else:
             self.speaker_embedder = None
+        if self.n_languages > 1:
+            assert self.multispeaker == Multispeaker.embedding, "Multilingual models must use multispeaker embedding"
+            self.language_embedder = tf.keras.layers.Embedding(self.n_languages,
+                                                               encoder_model_dimension,
+                                                               name='language_embedder')
+        if self.n_styles > 1:
+            assert self.multispeaker == Multispeaker.embedding, "Multi-style models must use multispeaker embedding"
+            self.style_embedder = tf.keras.layers.Embedding(self.n_styles,
+                                                            encoder_model_dimension,
+                                                            name='style_embedder')
+        elif self.speaker_embedder is not None:
+            self.style_embedder = self.speaker_embedder
+        else:
+            self.style_embedder = None
         self.dur_pred = StatPredictor(conv_filters=duration_conv_filters,
                                       kernel_size=duration_kernel_size,
                                       conv_padding='same',
@@ -122,12 +140,17 @@ class ForwardTransformer(tf.keras.models.Model):
         self.training_input_signature = [
             tf.TensorSpec(shape=(None, None), dtype=tf.int32),
             tf.TensorSpec(shape=(None,), dtype=tf.int32),
+            tf.TensorSpec(shape=(None,), dtype=tf.int32),
+            tf.TensorSpec(shape=(None,), dtype=tf.int32),
+            tf.TensorSpec(shape=(None,), dtype=tf.float32),
             tf.TensorSpec(shape=(None, None, mel_channels), dtype=tf.float32),
             tf.TensorSpec(shape=(None, None), dtype=tf.int32),
             tf.TensorSpec(shape=(None, None), dtype=tf.float32)
         ]
         self.forward_input_signature = [
             tf.TensorSpec(shape=(None, None), dtype=tf.int32),
+            tf.TensorSpec(shape=(None,), dtype=tf.int32),
+            tf.TensorSpec(shape=(None,), dtype=tf.int32),
             tf.TensorSpec(shape=(None,), dtype=tf.int32),
             tf.TensorSpec(shape=(), dtype=tf.float32),
         ]
@@ -165,21 +188,23 @@ class ForwardTransformer(tf.keras.models.Model):
         config.update(kwargs)
         return config
 
-    def _train_step(self, input_sequence, speaker_id, target_sequence, target_durations, target_pitch):
+    def _train_step(self, input_sequence, speaker_id, language_id, style_id, mel_coef, target_sequence,
+                    target_durations, target_pitch):
         target_durations = tf.expand_dims(target_durations, -1)
         target_pitch = tf.expand_dims(target_pitch, -1)
         mel_len = int(tf.shape(target_sequence)[1])
+        mel_coef = tf.expand_dims(tf.expand_dims(mel_coef, -1), -1)
         with tf.GradientTape() as tape:
             model_out = self.__call__(input_sequence, target_durations, target_pitch=target_pitch,
-                                      training=True, speaker_id=speaker_id)
-            loss, loss_vals = weighted_sum_losses((target_sequence,
+                                      training=True, speaker_id=speaker_id, language_id=language_id, style_id=style_id)
+            loss, loss_vals = weighted_sum_losses((target_sequence * mel_coef,
                                                    target_durations,
                                                    target_pitch),
-                                                  (model_out['mel'][:, :mel_len, :],
+                                                  (model_out['mel'][:, :mel_len, :] * mel_coef,
                                                    model_out['duration'],
                                                    model_out['pitch']),
                                                   self.loss,
-                                                  self.loss_weights)
+                                                  self.loss_weights)  # [1., 1., 3.] for mel, duration, pitch
         model_out.update({'loss': loss})
         model_out.update({'losses': {'mel': loss_vals[0], 'duration': loss_vals[1], 'pitch': loss_vals[2]}})
         gradients = tape.gradient(loss, self.trainable_variables)
@@ -193,16 +218,17 @@ class ForwardTransformer(tf.keras.models.Model):
                      loss_weights=self.loss_weights,
                      optimizer=optimizer)
 
-    def _val_step(self, input_sequence, speaker_id, target_sequence, target_durations, target_pitch):
+    def _val_step(self, input_sequence, speaker_id, language_id, style_id, mel_coef, target_sequence, target_durations, target_pitch):
         target_durations = tf.expand_dims(target_durations, -1)
         target_pitch = tf.expand_dims(target_pitch, -1)
         mel_len = int(tf.shape(target_sequence)[1])
+        mel_coef = tf.expand_dims(tf.expand_dims(mel_coef, -1), -1)
         model_out = self.__call__(input_sequence, target_durations, target_pitch=target_pitch,
-                                  training=False, speaker_id=speaker_id)
-        loss, loss_vals = weighted_sum_losses((target_sequence,
+                                  training=False, speaker_id=speaker_id, language_id=language_id, style_id=style_id)
+        loss, loss_vals = weighted_sum_losses((target_sequence * mel_coef,
                                                target_durations,
                                                target_pitch),
-                                              (model_out['mel'][:, :mel_len, :],
+                                              (model_out['mel'][:, :mel_len, :] * mel_coef,
                                                model_out['duration'],
                                                model_out['pitch']),
                                               self.loss,
@@ -211,30 +237,36 @@ class ForwardTransformer(tf.keras.models.Model):
         model_out.update({'losses': {'mel': loss_vals[0], 'duration': loss_vals[1], 'pitch': loss_vals[2]}})
         return model_out
 
-    def _forward(self, input_sequence, speaker_id, durations_scalar):
+    def _forward(self, input_sequence, speaker_id, language_id, style_id, durations_scalar):
         return self.__call__(input_sequence, target_durations=None, target_pitch=None, training=False,
                              durations_scalar=durations_scalar, max_durations_mask=None,
-                             min_durations_mask=None, speaker_id=speaker_id)
+                             min_durations_mask=None, speaker_id=speaker_id, language_id=language_id, style_id=style_id)
 
     @property
     def step(self):
         return int(self.optimizer.iterations)
 
     def call(self, x, target_durations=None, target_pitch=None, training=False, durations_scalar=1.,
-             max_durations_mask=None, min_durations_mask=None,
-             speaker_id=None, pitch_id=None, dur_id=None):
+             max_durations_mask=None, min_durations_mask=None, speaker_id=None, language_id=None, style_id=None,
+             pitch_id=None, dur_id=None):
         encoder_padding_mask = create_encoder_padding_mask(x)
         x = self.encoder_prenet(x)
+
+        if self.language_embedder is not None:
+            language_emb = self.language_embedder(language_id)
+            if len(x.shape) == 3:
+                language_emb = tf.expand_dims(language_emb, axis=1)
+            x = x + language_emb
+
         x, encoder_attention = self.encoder(x, training=training, padding_mask=encoder_padding_mask)
         padding_mask = 1. - tf.squeeze(encoder_padding_mask, axis=(1, 2))[:, :, None]
 
         if self.speaker_embedder is not None:
-            speaker_emb = pitch_emb = dur_emb = self.speaker_embedder(speaker_id)
+            speaker_emb = self.speaker_embedder(speaker_id)
 
-            if pitch_id is not None:
-                pitch_emb = self.speaker_embedder(pitch_id)
-            if dur_id is not None:
-                dur_emb = self.speaker_embedder(dur_id)
+            style_id = speaker_id if style_id is None or self.n_styles == 1 else style_id
+            dur_emb = self.style_embedder(style_id) if dur_id is None else self.style_embedder(dur_id)
+            pitch_emb = self.style_embedder(style_id) if pitch_id is None else self.style_embedder(pitch_id)
 
             if len(x.shape) == 3:
                 speaker_emb = tf.expand_dims(speaker_emb, axis=1)
@@ -287,7 +319,7 @@ class ForwardTransformer(tf.keras.models.Model):
 
     def predict(self, inp, encode=True, speed_regulator=1., phoneme_max_duration=None, phoneme_min_duration=None,
                 max_durations_mask=None, min_durations_mask=None, phoneme_durations=None, phoneme_pitch=None,
-                speaker_id=0, dur_id=None, pitch_id=None):
+                speaker_id=0, language_id=0, style_id=None, dur_id=None, pitch_id=None):
         if encode:
             inp = self.encode_text(inp, speaker_id=speaker_id)
         if len(tf.shape(inp)) < 2:
@@ -298,6 +330,8 @@ class ForwardTransformer(tf.keras.models.Model):
         min_durations_mask = self._make_min_duration_mask(inp, phoneme_min_duration)
 
         speaker_id = tf.cast([speaker_id], tf.int32) if type(speaker_id) == int else speaker_id
+        language_id = tf.cast([language_id], tf.int32) if type(language_id) == int else language_id
+        style_id = tf.cast([style_id], tf.int32) if type(style_id) == int else style_id
         dur_id = tf.cast([dur_id], tf.int32) if type(dur_id) == int else dur_id
         pitch_id = tf.cast([pitch_id], tf.int32) if type(pitch_id) == int else pitch_id
 
@@ -309,6 +343,8 @@ class ForwardTransformer(tf.keras.models.Model):
                         max_durations_mask=max_durations_mask,
                         min_durations_mask=min_durations_mask,
                         speaker_id=speaker_id,
+                        language_id=language_id,
+                        style_id=style_id,
                         dur_id=dur_id,
                         pitch_id=pitch_id)
         out['mel'] = tf.squeeze(out['mel'])
@@ -333,7 +369,7 @@ class ForwardTransformer(tf.keras.models.Model):
         return tf.cast(tf.convert_to_tensor(new_mask), tf.float32)
 
     def build_model_weights(self) -> None:
-        _ = self(tf.zeros((1, 1)), target_durations=None, target_pitch=None, training=False, speaker_id=tf.zeros(1, ))
+        _ = self(tf.zeros((1, 1)), target_durations=None, target_pitch=None, training=False, speaker_id=tf.zeros(1, ), language_id=tf.zeros(1, ))
 
     def save_model(self, path: str):
         yaml = YAML()
