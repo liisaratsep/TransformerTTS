@@ -39,13 +39,13 @@ if __name__ == '__main__':
     file_ids_from_wavs = list(metadatareader.wav_paths.keys())
     logger.info(f"Reading wavs from {metadatareader.wav_directory}")
     logger.info(f"Reading metadata from {metadatareader.metadata_path}")
-    logger.info(f'\nFound {len(metadatareader.filenames)} metadata lines.')
-    logger.info(f'\nFound {len(file_ids_from_wavs)} wav files.')
+    logger.info(f'Found {len(metadatareader.filenames)} metadata lines.')
+    logger.info(f'Found {len(file_ids_from_wavs)} wav files.')
     cross_file_ids = file_ids_from_wavs
 
     if not args.skip_mels:
 
-        def process_wav(wav_path: Path):
+        def process_wav(wav_path: Path, speaker_id: int = None):
             file_name = str(wav_path)[len(str(config.wav_directory)):].replace('/', '_').split('.')[0].strip('_')
             y, sr = audio.load_wav(str(wav_path))
             pitch = audio.extract_pitch(y)
@@ -56,21 +56,29 @@ if __name__ == '__main__':
             pitch_path = (config.pitch_dir / file_name).with_suffix('.npy')
             np.save(mel_path, mel)
             np.save(pitch_path, pitch)
-            return {'fname': file_name, 'mel.len': mel.shape[0], 'pitch.path': pitch_path, 'pitch': pitch}
+            return {'fname': file_name,
+                    'mel.len': mel.shape[0],
+                    'pitch.path': pitch_path,
+                    'pitch': pitch,
+                    'speaker_id': speaker_id}
 
 
-        logger.info(f"\nMels will be stored stored under")
+        logger.info(f"Mels will be stored stored under")
         logger.info(f"{config.mel_dir}")
         audio = Audio.from_config(config=config.config)
         wav_files = [metadatareader.wav_paths[k] for k in cross_file_ids]
+        speakers = [metadatareader.text_dict[k][2] for k in cross_file_ids]
         len_dict = {}
         remove_files = []
         mel_lens = []
         pitches = {}
-        wav_iter = p_uimap(process_wav, wav_files)
+        wav_iter = p_uimap(process_wav, wav_files, speakers)
         for out_dict in wav_iter:
             len_dict.update({out_dict['fname']: out_dict['mel.len']})
-            pitches.update({out_dict['pitch.path']: out_dict['pitch']})
+            if out_dict['speaker_id'] not in pitches:
+                pitches.update({out_dict['speaker_id']: {out_dict['pitch.path']: out_dict['pitch']}})
+            else:
+                pitches[out_dict['speaker_id']].update({out_dict['pitch.path']: out_dict['pitch']})
             if out_dict['mel.len'] > config.config['max_mel_len'] or out_dict['mel.len'] < config.config['min_mel_len']:
                 remove_files.append(out_dict['fname'])
             else:
@@ -92,10 +100,10 @@ if __name__ == '__main__':
             pitch[zero_idxs] = 0.0
             np.save(_fname, pitch)
 
-
-        mean, std = normalize_pitch_vectors(pitches)
-        pickle.dump({'pitch_mean': mean, 'pitch_std': std}, open(config.data_dir / 'pitch_stats.pkl', 'wb'))
-        pitch_iter = p_umap(process_pitches, pitches.items())
+        for speaker_id in set(speakers):
+            mean, std = normalize_pitch_vectors(pitches[speaker_id])
+            pickle.dump({'pitch_mean': mean, 'pitch_std': std}, open(config.data_dir / f'pitch_stats_{speaker_id}.pkl', 'wb'))
+            pitch_iter = p_umap(process_pitches, pitches[speaker_id].items())
 
         pickle.dump(len_dict, open(config.data_dir / 'mel_len.pkl', 'wb'))
         pickle.dump(remove_files, open(config.data_dir / 'under-over_sized_mels.pkl', 'wb'))
@@ -115,8 +123,8 @@ if __name__ == '__main__':
         if not alphabet:
             alphabet = symbols.alphabet
 
-        logger.info(f'\nReading metadata from {metadatareader.metadata_path}')
-        logger.info(f'\nFound {len(metadatareader.filenames)} lines.')
+        logger.info(f'Reading metadata from {metadatareader.metadata_path}')
+        logger.info(f'Found {len(metadatareader.filenames)} lines.')
         filter_metadata = []
         fnames = metadatareader.text_dict.keys()
         for fname in fnames:
@@ -128,20 +136,20 @@ if __name__ == '__main__':
             logger.info(f'Removing {len(filter_metadata)} suspiciously short line(s):')
             for fname in filter_metadata:
                 logger.info(f'{fname}: {metadatareader.text_dict[fname]}')
-        logger.info(f'\nRemoving {len(remove_files)} line(s) due to mel filtering.')
+        logger.info(f'Removing {len(remove_files)} line(s) due to mel filtering.')
         remove_files += filter_metadata
         metadata_file_ids = [fname for fname in fnames if fname not in remove_files]
         metadata_len = len(metadata_file_ids)
         sample_items = np.random.choice(metadata_file_ids, 5)
         test_len = config.config['n_test']
         train_len = metadata_len - test_len
-        logger.info(f'\nMetadata contains {metadata_len} lines.')
-        logger.info(f'\nFiles will be stored under {config.data_dir}')
+        logger.info(f'Metadata contains {metadata_len} lines.')
+        logger.info(f'Files will be stored under {config.data_dir}')
         logger.info(f' - all: {phonemized_metadata_path}')
         logger.info(f' - {train_len} training lines: {train_metadata_path}')
         logger.info(f' - {test_len} validation lines: {test_metadata_path}')
 
-        logger.info('\nMetadata samples:')
+        logger.info('Metadata samples:')
         for i in sample_items:
             logger.info(f'{i}:{metadatareader.text_dict[i]}')
             summary_manager.add_text(f'{i}/text', text=metadatareader.text_dict[i][:2])
@@ -157,29 +165,28 @@ if __name__ == '__main__':
 
 
         def process_phonemes(_file_id):
-            text = metadatareader.text_dict[_file_id][0]
-            _speaker = metadatareader.text_dict[_file_id][-1]
+            text, _, _speaker, _language, _style, _mel_coef = metadatareader.text_dict[_file_id]
             try:
                 phon = text_proc.phonemizer(text)
             except Exception as e:
-                logger.info(f'{e}\nFile id {_file_id}')
+                logger.info(f'{e}File id {_file_id}')
                 raise BrokenPipeError
-            return _file_id, phon, _speaker
+            return _file_id, phon, _speaker, _language, _style, _mel_coef
 
 
-        logger.info('\nPHONEMIZING')
+        logger.info('PHONEMIZING')
         phonemized_data = {}
         phon_iter = p_uimap(process_phonemes, metadata_file_ids)
-        for (file_id, phonemes, speaker) in phon_iter:
-            phonemized_data.update({file_id.replace('/', '_'): (phonemes, speaker)})
+        for (file_id, phonemes, speaker, language, style, mel_coef) in phon_iter:
+            phonemized_data.update({file_id.replace('/', '_'): (phonemes, speaker, language, style, mel_coef)})
 
-        logger.info('\nPhonemized metadata samples:')
+        logger.info('Phonemized metadata samples:')
         for i in sample_items:
             i = i.replace('/', '_')
             logger.info(f'{i}:{phonemized_data[i]}')
             summary_manager.add_text(f'{i}/phonemes', text=phonemized_data[i][0])
 
-        new_metadata = [f'{k}|{v[0]}|{v[1]}\n' for k, v in phonemized_data.items()]
+        new_metadata = [f'{k}|{v[0]}|{v[1]}|{v[2]}|{v[3]}|{v[4]}\n' for k, v in phonemized_data.items()]
         shuffled_metadata = np.random.permutation(new_metadata)
         train_metadata = shuffled_metadata[0:train_len]
         test_metadata = shuffled_metadata[-test_len:]
@@ -197,4 +204,4 @@ if __name__ == '__main__':
         assert len(train_metadata) + len(test_metadata) == metadata_len, \
             f'Train and/or validation lengths incorrect. ({len(train_metadata)}+{len(test_metadata)}!={metadata_len})'
 
-    logger.info('\nDone')
+    logger.info('Done')

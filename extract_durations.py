@@ -109,32 +109,36 @@ if __name__ == '__main__':
         summary_manager.add_histogram(values=all_durations, tag='ExtractedDurations', buckets=buckets)
 
     if not args.skip_char_pitch:
-        def _pitch_per_char(pitch, _durations, mel_len):
+        def _pitch_per_char(pitch, _durations, mel_len, speaker_id):
             durs_cum = np.cumsum(np.pad(_durations, (1, 0)))
             pitch_char = np.zeros((_durations.shape[0],), dtype=np.float)
             for idx, a, b in zip(range(mel_len), durs_cum[:-1], durs_cum[1:]):
                 values = pitch[a:b][np.where(pitch[a:b] != 0.0)[0]]
-                values = values[np.where((values * pitch_stats['pitch_std'] + pitch_stats['pitch_mean']) < 400)[0]]
+                values = values[np.where((values * pitch_stats[speaker_id]['pitch_std'] + pitch_stats[speaker_id]['pitch_mean']) < 400)[0]]
                 pitch_char[idx] = np.mean(values) if len(values) > 0 else 0.0
             return pitch_char
 
 
-        def process_per_char_pitch(sample_name: str):
+        def process_per_char_pitch(sample_name: str, speaker_id: int):
             # noinspection PyBroadException
             try:
                 pitch = np.load((config.pitch_dir / sample_name).with_suffix('.npy').as_posix())
                 _durations = np.load((config.duration_dir / sample_name).with_suffix('.npy').as_posix())
                 _mel = np.load((config.mel_dir / sample_name).with_suffix('.npy').as_posix())
-                char_wise_pitch = _pitch_per_char(pitch, _durations, _mel.shape[0])
+                char_wise_pitch = _pitch_per_char(pitch, _durations, _mel.shape[0], speaker_id)
                 np.save((config.pitch_per_char / sample_name).with_suffix('.npy').as_posix(), char_wise_pitch)
             except Exception:
                 logger.exception(f"Failed to process {sample_name}")
 
 
         metadatareader = DataReader.from_config(config, kind='phonemized', scan_wavs=False)
-        pitch_stats = pickle.load(open(config.data_dir / 'pitch_stats.pkl', 'rb'))
-        logger.info(f'\nComputing phoneme-wise pitch')
+        filenames = metadatareader.filenames
+        speakers = [metadatareader.text_dict[filename][1] for filename in filenames]
+        pitch_stats = {}
+        for speaker in set(speakers):
+            pitch_stats[speaker] = pickle.load(open(config.data_dir / f'pitch_stats_{speaker}.pkl', 'rb'))
+        logger.info(f'Computing phoneme-wise pitch')
         logger.info(f'{len(metadatareader.filenames)} items found in {metadatareader.metadata_path}.')
-        wav_iter = p_umap(process_per_char_pitch, metadatareader.filenames)
+        wav_iter = p_umap(process_per_char_pitch, metadatareader.filenames, speakers)
 
     logger.info('Done.')

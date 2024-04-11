@@ -1,6 +1,6 @@
 import sys
 import logging
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,8 @@ def get_preprocessor_by_name(name: str):
     return getattr(this_module, name.lower())
 
 
-def ljspeech(_metadata_path: str, multispeaker: bool, column_sep='|') -> dict:
+def ljspeech(_metadata_path: str, multispeaker: Optional[str] = None, n_languages: int = 1, n_styles: int = 1,
+             partial_training: bool = False, column_sep='|') -> dict:
     text_dict = {}
     with open(_metadata_path, 'r', encoding='utf-8') as f:
         for line in f.readlines():
@@ -24,14 +25,18 @@ def ljspeech(_metadata_path: str, multispeaker: bool, column_sep='|') -> dict:
                 filename = filename.split('.')[0]
             text = text.replace('\n', '')
 
-            speaker = int(l_split[2]) if multispeaker else 0
-            text_dict.update({filename: (text, filename.replace('/', '_'), speaker)})
+            speaker = int(l_split[2]) if multispeaker is not None else 0
+            language = int(l_split[3]) if n_languages > 1 else 0
+            style = int(l_split[4]) if n_styles > 1 else 0
+            mel_coef = float(l_split[5]) if partial_training else 1.
+            text_dict.update({filename: (text, filename.replace('/', '_'), speaker, language, style, mel_coef)})
 
     return text_dict
 
 
-def post_processed_reader(_metadata_path: str, multispeaker: bool,
-                          column_sep='|', upsample_indicators='?!', upsample_factor=10) -> Tuple[Dict, List]:
+def post_processed_reader(_metadata_path: str, multispeaker: Optional[str] = None, n_languages: int = 1,
+                          n_styles: int = 1, partial_training: bool = False, column_sep='|', upsample_indicators='?!',
+                          upsample_factor=10) -> Tuple[Dict, List]:
     """
     Used to read metadata files created within the repo.
     """
@@ -45,8 +50,11 @@ def post_processed_reader(_metadata_path: str, multispeaker: bool,
             if any(el in text for el in list(upsample_indicators)):
                 upsample.extend([filename] * upsample_factor)
 
-            speaker = int(l_split[2]) if multispeaker else 0
-            text_dict.update({filename: (text, speaker)})
+            speaker = int(l_split[2]) if multispeaker is not None else 0
+            language = int(l_split[3]) if n_languages > 1 else 0
+            style = int(l_split[4]) if n_styles > 1 else 0
+            mel_coef = float(l_split[5]) if partial_training else 1.
+            text_dict.update({filename: (text, speaker, language, style, mel_coef)})
     return text_dict, upsample
 
 

@@ -119,7 +119,7 @@ class TrainingConfigManager:
                 self._print_dict_values(dictionary[key], key_name=key, level=recursion_level)
 
     def print_config(self):
-        logger.info('\nCONFIGURATION', self.model_kind)
+        logger.info('CONFIGURATION', self.model_kind)
         self._print_dictionary(self.config)
 
     def update_config(self):

@@ -35,13 +35,16 @@ if __name__ == '__main__':
 
     def display_target_symbol_duration_distributions():
         phon_data, ups = post_processed_reader(config.phonemized_metadata_path,
-                                               multispeaker=config.config['multispeaker'])
+                                               multispeaker=config.config['multispeaker'],
+                                               n_languages=config.config['n_languages'],
+                                               n_styles=config.config['n_styles'],
+                                               partial_training=config.config['partial_training'])
         dur_dict = {}
         for key in phon_data.keys():
             dur_dict[key] = np.load((config.duration_dir / key).with_suffix('.npy'))
         symbol_durs = {}
         for key in dur_dict:
-            for _i, phoneme in enumerate(phon_data[key]):
+            for _i, phoneme in enumerate(phon_data[key][0]):
                 symbol_durs.setdefault(phoneme, []).append(dur_dict[key][_i])
         for symbol in symbol_durs.keys():
             summary_manager.add_histogram(tag=f'"{symbol}"/Target durations', values=symbol_durs[symbol],
@@ -50,11 +53,14 @@ if __name__ == '__main__':
 
     def display_predicted_symbol_duration_distributions(_all_durations):
         phon_data, ups = post_processed_reader(config.phonemized_metadata_path,
-                                               multispeaker=config.config['multispeaker'])
+                                               multispeaker=config.config['multispeaker'],
+                                               n_languages=config.config['n_languages'],
+                                               n_styles=config.config['n_styles'],
+                                               partial_training=config.config['partial_training'])
         symbol_durs = {}
         for key in _all_durations.keys():
             clean_key = key.decode('utf-8')
-            for _i, phoneme in enumerate(phon_data[clean_key]):
+            for _i, phoneme in enumerate(phon_data[clean_key][0]):
                 symbol_durs.setdefault(phoneme, []).append(_all_durations[key][_i])
         for symbol in symbol_durs.keys():
             summary_manager.add_histogram(tag=f'"{symbol}"/Predicted durations', values=symbol_durs[symbol])
@@ -68,13 +74,16 @@ if __name__ == '__main__':
         _val_loss = {'loss': 0.}
         norm = 0.
 
-        model_out = _mel = _phonemes = _durations = _pitch = _fname = _speaker_id = None
-        for _mel, _phonemes, _durations, _pitch, _fname, _speaker_id in val_dataset.all_batches():
+        model_out = _mel = _phonemes = _durations = _pitch = _fname = _speaker_id = _language_id = _style_id = _mel_coef = None
+        for _mel, _phonemes, _durations, _pitch, _fname, _speaker_id, _language_id, _style_id, _mel_coef in val_dataset.all_batches():
             model_out = _model.val_step(input_sequence=_phonemes,
-                                        target_sequence=_mel,
-                                        target_durations=_durations,
-                                        target_pitch=_pitch,
-                                        speaker_id=_speaker_id)
+                                    target_sequence=_mel,
+                                    target_durations=_durations,
+                                    target_pitch=_pitch,
+                                    speaker_id=_speaker_id,
+                                    language_id=_language_id,
+                                    style_id=_style_id,
+                                    mel_coef=_mel_coef)
             norm += 1
             _val_loss['loss'] += model_out['loss']
         _val_loss['loss'] /= norm
@@ -93,7 +102,8 @@ if __name__ == '__main__':
                                        mel=model_out['mel'][0])
         _summary_manager.display_audio(tag=f'Validation {_fname[0].numpy().decode("utf-8")}/target', mel=_mel[0])
         # predict without enforcing durations and pitch
-        model_out = _model.predict(_phonemes, encode=False, speaker_id=_speaker_id)
+        model_out = _model.predict(_phonemes, encode=False, speaker_id=_speaker_id, language_id=_language_id,
+                                   style_id=_style_id)
         pred_lengths = tf.cast(tf.reduce_sum(1 - model_out['expanded_mask'], axis=-1), tf.int32)
         pred_lengths = tf.squeeze(pred_lengths)
         tar_lengths = tf.cast(tf.reduce_sum(1 - create_mel_padding_mask(_mel), axis=-1), tf.int32)
@@ -149,16 +159,16 @@ if __name__ == '__main__':
 
     checkpoint.restore(manager_training.latest_checkpoint)
     if manager_training.latest_checkpoint:
-        logger.info(f'\nresuming training from step {model.step} ({manager_training.latest_checkpoint})')
+        logger.info(f'resuming training from step {model.step} ({manager_training.latest_checkpoint})')
     else:
-        logger.info(f'\nstarting training from scratch')
+        logger.info(f'starting training from scratch')
 
     if config_dict['debug'] is True:
-        logger.warning('\nDEBUG is set to True. Training in eager mode.')
+        logger.warning('DEBUG is set to True. Training in eager mode.')
 
     display_target_symbol_duration_distributions()
     # main event
-    logger.info('\nTRAINING')
+    logger.info('TRAINING')
     losses = []
 
     texts = []
@@ -169,16 +179,28 @@ if __name__ == '__main__':
     all_files = len(set(train_data_handler.metadata_reader.filenames))  # without duplicates
     all_durations = {}
     t = trange(model.step, config_dict['max_steps'], leave=True)
+
+    try:
+        model.predict(".") # builds the model to count the number of parameters
+        logger.info('Number of parameters: {}'.format(np.sum([np.prod(v.shape) for v in model.trainable_variables])))
+    except Exception:
+        pass
+
+
     for _ in t:
         t.set_description(f'step {model.step}')
-        mel, phonemes, durations, pitch, fname, speaker_id = train_dataset.next_batch()
+        mel, phonemes, durations, pitch, fname, speaker_id, language_id, style_id, mel_coef = train_dataset.next_batch()
         learning_rate = piecewise_linear_schedule(model.step, config_dict['learning_rate_schedule'])
         model.set_constants(learning_rate=learning_rate)
+        model.set_stat_trainable_variables()
         output = model.train_step(input_sequence=phonemes,
+                                  speaker_id=speaker_id,
+                                  language_id=language_id,
+                                  style_id=style_id,
+                                  mel_coef=mel_coef,
                                   target_sequence=mel,
                                   target_durations=durations,
-                                  target_pitch=pitch,
-                                  speaker_id=speaker_id)
+                                  target_pitch=pitch)
         losses.append(float(output['loss']))
 
         predicted_durations = dict(zip(fname.numpy(), output['duration'].numpy()))
@@ -203,9 +225,10 @@ if __name__ == '__main__':
             summary_manager.display_plot_1d(tag=f'Train/Predicted pitch', y=output['pitch'][0])
             summary_manager.display_plot_1d(tag=f'Train/Target pitch', y=pitch[0])
 
-        if model.step % 1000 == 0:
-            save_path = manager_training.save()
+        # if model.step % 1000 == 0:
+        #     save_path = manager_training.save()
         if model.step % config_dict['weights_save_frequency'] == 0:
+            save_path = manager_training.save()
             save_path = manager.save()
             t.display(f'checkpoint at step {model.step}: {config.weights_dir / f"step_{model.step}"}',
                       pos=len(config_dict['n_steps_avg_losses']) + 2)
@@ -228,7 +251,16 @@ if __name__ == '__main__':
                         speaker_id = text_line[1]
                     else:
                         speaker_id = random.randint(0, model.n_speakers - 1)
-                    out = model.predict(text_line[0], encode=True, speaker_id=speaker_id)
+                    if len(text_line) > 2:
+                        language_id = text_line[2]
+                    else:
+                        language_id = 0
+                    if len(text_line) > 3:
+                        style_id = text_line[3]
+                    else:
+                        style_id = random.randint(0, model.n_styles - 1)
+                    out = model.predict(text_line[0], encode=True, speaker_id=speaker_id, language_id=language_id,
+                                        style_id=style_id)
                     wav = summary_manager.audio.reconstruct_waveform(out['mel'].numpy().T)
                     wavs.append(wav)
                 wavs = np.concatenate(wavs)

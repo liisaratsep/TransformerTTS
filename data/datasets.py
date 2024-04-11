@@ -26,16 +26,19 @@ class DataReader:
     training data.
     """
 
-    def __init__(self, wav_directory: str, metadata_path: str, multispeaker: bool, metadata_reading_function=None,
-                 scan_wavs=False, training=False, is_processed=False):
+    def __init__(self, wav_directory: str, metadata_path: str, multispeaker: Optional[str] = None, n_languages: int = 1,
+                 n_styles: int = 1, partial_training: bool = False, metadata_reading_function=None, scan_wavs=False,
+                 training=False, is_processed=False):
         self.metadata_reading_function = metadata_reading_function
         self.wav_directory = Path(wav_directory)
         self.metadata_path = Path(metadata_path)
         if not is_processed:
-            self.text_dict = self.metadata_reading_function(self.metadata_path, multispeaker)
+            self.text_dict = self.metadata_reading_function(self.metadata_path, multispeaker, n_languages, n_styles,
+                                                            partial_training)
             self.filenames = list(self.text_dict.keys())
         else:
-            self.text_dict, self.upsample = self.metadata_reading_function(self.metadata_path, multispeaker)
+            self.text_dict, self.upsample = self.metadata_reading_function(self.metadata_path, multispeaker,
+                                                                           n_languages, n_styles, partial_training)
             self.filenames = list(self.text_dict.keys())
             if training:
                 self.filenames += self.upsample
@@ -70,7 +73,10 @@ class DataReader:
                    scan_wavs=scan_wavs,
                    training=training,
                    is_processed=is_processed,
-                   multispeaker=config_manager.config['multispeaker'])
+                   multispeaker=config_manager.config['multispeaker'],
+                   n_languages=config_manager.config['n_languages'],
+                   n_styles=config_manager.config['n_styles'],
+                   partial_training=config_manager.config['partial_training'])
 
 
 class AlignerPreprocessor:
@@ -158,13 +164,13 @@ class AlignerDataset:
 
 class TTSPreprocessor:
     def __init__(self, mel_channels, tokenizer: Tokenizer):
-        self.output_types = (tf.float32, tf.int32, tf.int32, tf.float32, tf.string, tf.int32)
-        self.padded_shapes = ([None, mel_channels], [None], [None], [None], [], [])
+        self.output_types = (tf.float32, tf.int32, tf.int32, tf.float32, tf.string, tf.int32, tf.int32, tf.int32, tf.float32)
+        self.padded_shapes = ([None, mel_channels], [None], [None], [None], [], [], [], [], [])
         self.tokenizer = tokenizer
 
-    def __call__(self, text, mel, durations, pitch, sample_name, speaker_id):
+    def __call__(self, text, mel, durations, pitch, sample_name, speaker_id, language_id, style_id, mel_coef=1.):
         encoded_phonemes = self.tokenizer(text, speaker_id=speaker_id)
-        return mel, encoded_phonemes, durations, pitch, sample_name, speaker_id
+        return mel, encoded_phonemes, durations, pitch, sample_name, speaker_id, language_id, style_id, mel_coef
 
     @staticmethod
     def get_sample_length(mel, *_):
@@ -195,18 +201,18 @@ class TTSDataset:
         self.zfill = preprocessor.tokenizer.zfill
 
     def _read_sample(self, sample_name: str):
-        text, speaker_id = self.metadata_reader.text_dict[sample_name]
+        text, speaker_id, language_id, style_id, mel_coef = self.metadata_reader.text_dict[sample_name]
         mel = np.load((self.mel_directory / sample_name).with_suffix('.npy').as_posix())
         durations = np.pad(np.load(
             (self.duration_directory / sample_name).with_suffix('.npy').as_posix()), (self.zfill, 0))
         char_wise_pitch = np.pad(np.load((self.pitch_per_char_directory / sample_name).with_suffix('.npy').as_posix()),
                                  (self.zfill, 0))
-        return mel, text, durations, char_wise_pitch, speaker_id
+        return mel, text, durations, char_wise_pitch, speaker_id, language_id, style_id, mel_coef
 
     def _process_sample(self, sample_name: str):
-        mel, text, durations, pitch, speaker_id = self._read_sample(sample_name)
+        mel, text, durations, pitch, speaker_id, language_id, style_id, mel_coef = self._read_sample(sample_name)
         return self.preprocessor(mel=mel, text=text, durations=durations, pitch=pitch, sample_name=sample_name,
-                                 speaker_id=speaker_id)
+                                 speaker_id=speaker_id, language_id=language_id, style_id=style_id, mel_coef=mel_coef)
 
     def get_dataset(self, bucket_batch_sizes, bucket_boundaries, shuffle=True, drop_remainder=False):
         return Dataset(

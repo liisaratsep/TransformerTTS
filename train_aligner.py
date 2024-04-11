@@ -132,14 +132,14 @@ if __name__ == '__main__':
 
     checkpoint.restore(manager_training.latest_checkpoint)
     if manager_training.latest_checkpoint:
-        logger.info(f'\nresuming training from step {model.step} ({manager_training.latest_checkpoint})')
+        logger.info(f'resuming training from step {model.step} ({manager_training.latest_checkpoint})')
     else:
-        logger.info(f'\nstarting training from scratch')
+        logger.info(f'starting training from scratch')
 
     if config.config['debug'] is True:
-        logger.warning('\nDEBUG is set to True. Training in eager mode.')
+        logger.warning('DEBUG is set to True. Training in eager mode.')
     # main event
-    logger.info('\nTRAINING')
+    logger.info('TRAINING')
     losses = []
 
     texts = []
